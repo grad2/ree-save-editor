@@ -30,7 +30,7 @@ impl AssetPaths {
                 mappings: p("assets/mhwilds/enums_mappings_mhwilds.json"),
                 remap: p("assets/mhwilds/remapmhwilds.json"),
                 packed_assets: p("assets/mhwilds/packed_assets.bc"),
-                ..Default::default() // Automatically fills the rest with `None`!
+                ..Default::default()
             },
             Game::MHST3 => Self {
                 rsz: p("assets/mhst3/rszmhst3.json"),

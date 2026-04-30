@@ -67,7 +67,7 @@ This tool supports transferring some games between PC and PS5. You have to load 
 |-|-|-|-|
 |MH Wilds|Deflate|Mandarin & Deflate||
 |Pragmata|Mandarin|Mandarin|on PS5, use the id 526253637 and change _RegionHash to 3208943443|
-|Dragon's Dogma 2|Mandarin ("DD2 PS5")|Mandarin (game: "DD2")|on PS5, use the id 11957868291195786822, you also have to change game profiles|
+|Dragon's Dogma 2|Mandarin ("DD2 PS5")|Mandarin (game: "Dragon's Dogma 2")|on PS5, use the id 11957868291195786822, you also have to change game profiles|
 
 ## FAQ
 1. Missing Save Files: If you are having trouble finding your steam files, try following this [guide](https://gist.github.com/mi5hmash/47f1be53d213be9b00f2c7e0aa151b11)

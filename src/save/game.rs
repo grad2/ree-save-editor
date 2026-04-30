@@ -5,7 +5,6 @@ use crate::save::crypto;
 macro_rules! define_games {
     (
         $(
-            // We make the last two arguments optional by wrapping them in $( , $arg1, $arg2 )?
             $variant:ident ( 
                 $name:expr, 
                 $appid:expr 
