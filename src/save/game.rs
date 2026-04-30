@@ -12,6 +12,7 @@ macro_rules! define_games {
                 $(, seeds: $seeds:expr)? 
                 $(, calc: $steam_calc:expr)?
                 $(, blowfish: $blowfish:expr )? 
+                $(, lime: $lime:expr )? 
             )
         ),* $(,)?
     ) => {
@@ -75,6 +76,19 @@ macro_rules! define_games {
                     $( Game::$variant => $appid, )*
                 }
             }
+
+            pub fn get_is_lime(&self) -> bool {
+                match self {
+                    $( 
+                        #[allow(unused_assignments, unused_mut)]
+                        Game::$variant => {
+                            let mut is_lime = false;
+                            $( is_lime = $lime; )?
+                            is_lime
+                        }
+                    )*
+                }
+            }
         }
     };
 }
@@ -91,6 +105,7 @@ define_games! {
     RE3     ("RE 3", 952060,  blowfish: crypto::blowfish::KEY_RE3),
     RE7     ("RE 7", 418370, blowfish: crypto::blowfish::KEY_RE7),
     RE8     ("RE 8", 1196590, blowfish: crypto::blowfish::KEY_RE8),
-    RE4     ("RE 4", 2050650, calc: |id: u64| id & 0xffffffff),// & 0xffffffff),
+    RE4     ("RE 4", 2050650, calc: |id: u64| id & 0xffffffff),
+    DD2PS5  ("DD2 PS5", 0, calc: |id: u64| id, lime: true),
     MISC    ("Misc", 0),
 }

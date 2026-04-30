@@ -265,7 +265,7 @@ impl SaveFile {
             if flags.contains(SaveFlags::MANDARIN) {
                 // for RE4, it uses LIME instead of MANDARIN, frick you capcom
                 // I think DD2 PS5 also uses it
-                if options.game == Game::RE4 {
+                if options.game.get_is_lime() {
                     log::info!("Doing Lime instead of Mandarin for RE4");
                     let id = if let Some((base, count)) = options.brute_force {
                         let id = Lime::brute_force(&data, decrypted_len, options.game, base, count)
@@ -445,8 +445,8 @@ impl SaveFile {
         let decrypted_size = payload.len() as u64;
 
         if self.flags.contains(SaveFlags::MANDARIN) {
-            if options.game == Game::RE4 {
-                log::info!("Doing Lime instead of Mandarin for RE4");
+            if options.game.get_is_lime() {
+                log::info!("Doing Lime instead of Mandarin for {:?}", options.game);
                 let id = options.id
                     .ok_or(SaveError::RequiresID(SaveFlags::LIME))?;
                 let key = options.game.get_key_from_steamid(id);

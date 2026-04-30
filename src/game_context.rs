@@ -46,7 +46,7 @@ impl AssetPaths {
                 remap: p("assets/re9/remap.json"),
                 ..Default::default()
             },
-            Game::DD2 => Self {
+            Game::DD2 | Game::DD2PS5 => Self {
                 rsz: p("assets/dd2/rszdd2.json"),
                 enums: p("assets/dd2/enumsdd2.json"),
                 ..Default::default()
