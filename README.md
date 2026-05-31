@@ -5,7 +5,7 @@ Tool for editing save files from many RE Engine games. This repo was previously 
 Supported Games:
 
 |Game|Steam AppID|Support|PS5|
-|-|-|-|
+|-|-|-|-|
 |MH Wilds|2246340|✅|✅|
 |MH Stories 3|2852190|✅|?|
 |MH Rise|1446780|✅|?|
