@@ -280,7 +280,7 @@ impl Mandarin {
         let mut buf = vec![0u8; 0x20210];
         let mut decrypted = vec![0u8; decrypted_len as usize];
         let mut remaining_bytes = decrypted_len as usize;
-        let auth = Elgamal::init(!key).unwrap();
+        let auth = Elgamal::init(!key);
 
         for i in 0..num_real_blocks as usize {
             //println!("BLOCK {} out of {num_real_blocks}", i + 1);
@@ -425,7 +425,7 @@ impl Mandarin {
         let mut encrypted = vec![0u8; total_encrypted_len as usize];
         let mut remaining_bytes = data_len as usize;
 
-        let auth = Elgamal::init(!key).unwrap();
+        let auth = Elgamal::init(!key);
 
         for i in 0..num_real_blocks as usize {
             // generate key and iv

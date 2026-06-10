@@ -1,5 +1,5 @@
 [package]
-name = "ree-lib"
+name = "ree-save-core"
 version = "1.0.2"
 edition = "2024"
 
@@ -7,32 +7,34 @@ edition = "2024"
 
 [workspace]
 members = [
-    ".", "file_macros", "rsz_macros" , "util", "gui"
+    ".", "util", "gui"
 ]
 
 [lib]
-crate-type = ["cdylib", "rlib"]
-
-[[bin]]
-name = "repacker"
-path = "src/bin/repacker.rs"
-
-[[bin]]
-name = "ree-dump"
-path = "src/main.rs"
+crate-type = ["rlib"]
 
 [features]
 default = ["scripting"]
-tex = ["dep:libdeflater"]
 scripting = ["dep:mlua"]
 tdb = []
 edit = []
 save = []
+mhwilds = []
+dd2 = []
+pragmata = []
+mhst3 = []
+re9 = []
+mhrise = []
+sf6 = []
+re2 = []
+re3 = []
+re4 = []
+re7 = []
+re8 = []
 
 [dependencies]
 util = { path = "./util" }
-rsz_macros = { path = "./rsz_macros" }
-file_macros = { path = "./file_macros" }
+ree-lib = { path = "../ree-lib-rs/" }
 clap = { version = "4.5.20", features = ["derive"] }
 image = {version = "0.25.5", features = ["webp"]}
 log = "0.4.27"
@@ -65,8 +67,6 @@ murmur3 = "0.5.2"
 
 # compression
 flate2 = {version = "1.1.5", features = ["rust_backend"], default-features = false}
-libdeflater = {git = "https://github.com/c-ola/libdeflater.git", branch = "master", features=["freestanding"], optional=true}
-#libdeflater = {path = "../libdeflater/", features = ["freestanding"] }
 zstd = "0.13.3"
 lz4_flex = "0.12.0"
 
@@ -74,7 +74,6 @@ lz4_flex = "0.12.0"
 rayon = "1.11.0"
 bitfield = "0.19.3"
 dotenvy = "0.15.7"
-uuid = "1.11.0"
 half = { version = "2.7.1", features = ["serde"] }
 
 # ui
@@ -99,6 +98,9 @@ byteorder = "1.5.0"
 aes = "0.9.0"
 ofb = "0.7.0"
 thiserror = "2.0.18"
+anyhow = "1.0.102"
+strum = { version = "0.28.0", features = ["derive"] }
+strum_macros = "0.28.0"
 
 
 [target.'cfg(target_os = "linux")'.dependencies]

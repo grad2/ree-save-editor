@@ -1,4 +1,5 @@
-pub mod corrupt;
+//pub mod corrupt;
+pub mod eval;
 pub mod crypto;
 pub mod game;
 pub mod remap;
@@ -488,7 +489,7 @@ impl SaveFile {
             match types::Class::read(data) {
                 Ok(field_value) => fields.push((h, field_value)),
                 Err(e) => {
-                    //log::error!("error reading class native_field_hash={h:010x}: {e}");
+                    log::debug!("error reading class native_field_hash={h:010x}: {e}");
                 }
             }
             if data.position() >= end {

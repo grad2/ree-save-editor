@@ -1,4 +1,5 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 
 use crate::save::crypto;
 
@@ -16,7 +17,7 @@ macro_rules! define_games {
         ),* $(,)?
     ) => {
         #[repr(i32)]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Hash)]
+        #[derive(EnumIter, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
         pub enum Game {
             $( $variant, )*
         }
@@ -107,4 +108,37 @@ define_games! {
     RE4     ("RE 4", 2050650, calc: |id: u64| id & 0xffffffff),
     DD2PS5  ("DD2 PS5", 0, calc: |id: u64| id, lime: true),
     MISC    ("Misc", 0),
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for Game {
+    fn default() -> Self {
+        if cfg!(feature = "mhwilds") {
+            Self::MHWILDS
+        } else if cfg!(feature = "dd2") {
+            Self::DD2
+        } else if cfg!(feature = "pragmata") {
+            Self::PRAGMATA
+        } else if cfg!(feature = "mhst3") {
+            Self::MHST3
+        } else if cfg!(feature = "re9") {
+            Self::RE9
+        } else if cfg!(feature = "mhrise") {
+            Self::MHRISE
+        } else if cfg!(feature = "sf6") {
+            Self::SF6
+        } else if cfg!(feature = "re2") {
+            Self::RE2
+        } else if cfg!(feature = "re3") {
+            Self::RE3
+        } else if cfg!(feature = "re4") {
+            Self::RE4
+        } else if cfg!(feature = "re7") {
+            Self::RE7
+        } else if cfg!(feature = "re8") {
+            Self::RE8
+        } else {
+            Self::MHWILDS
+        }
+    }
 }

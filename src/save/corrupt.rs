@@ -1,4 +1,4 @@
-use std::{
+/*use std::{
     error::Error,
     io::{Read, Seek},
 };
@@ -9,11 +9,11 @@ use crate::{
     save::{
         SaveFile, SaveFlags, game::Game, types::{Array, ArrayType, Class, EnumValue, Field, FieldType, FieldValue, Struct}
     },
-    sdk::{
-        StringU16,
-        type_map::{FieldInfo, TypeInfo, TypeMap, murmur3},
-    },
 };
+
+use ree_lib::types::StringU16;
+use ree_lib::rsz::{FieldInfo, TypeInfo, RszMap};
+use ree_lib::util::murmur3;
 
 // There are two types of corruption that I think can be fixed
 // The first is missing data/incorrect headers, where the size of the data has not changed
@@ -29,12 +29,12 @@ use crate::{
 // Also, It's important to note that saves corrupted at the deflate or encryption level are
 // probably unrecoverable (definitely for encryption, maybe possible for deflate?)
 pub struct CorruptSaveReader<'a> {
-    type_map: &'a TypeMap,
+    type_map: &'a RszMap,
     game: Game,
 }
 
 impl<'a> CorruptSaveReader<'a> {
-    pub fn new(type_map: &'a TypeMap, game: Game) -> Self {
+    pub fn new(type_map: &'a RszMap, game: Game) -> Self {
         Self { type_map, game }
     }
 
@@ -689,4 +689,4 @@ impl<'a> CorruptSaveReader<'a> {
         }
         scanned_classes
     }
-}
+}*/

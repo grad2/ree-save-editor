@@ -1,0 +1,55 @@
+{
+	"MHWILDS": {
+		"rsz": "assets/mhwilds/rszmhwilds_packed.json",
+		"enums": "assets/mhwilds/enumsmhwilds.json",
+		"remap": "assets/mhwilds/remapsmhwilds.json"
+	},
+	"MHST3": {
+		"rsz": "assets/mhst3/rszmhst3.json",
+		"enums": "assets/mhst3/enumsmhst3.json"
+	},
+	"RE9": {
+		"rsz": "assets/re9/rszre9.json",
+		"enums": "assets/re9/enumsre9.json"
+	},
+	"DD2": {
+		"rsz": "assets/dd2/rszdd2.json",
+		"enums": "assets/dd2/enumsdd2.json"
+	},
+	"DD2PS5": {
+		"rsz": "assets/dd2/rszdd2.json",
+		"enums": "assets/dd2/enumsdd2.json"
+	},
+	"PRAGMATA": {
+		"rsz": "assets/pragmata/rszpragmata.json",
+		"enums": "assets/pragmata/enumspragmata.json"
+	},
+	"MHRISE": {
+		"rsz": "assets/mhrise/rszmhrise.json",
+		"enums": "assets/mhrise/enumsmhrise.json"
+	},
+	"SF6": {
+		"rsz": "assets/sf6/rszsf6.json",
+		"enums": "assets/sf6/enumssf6.json"
+	},
+	"RE7": {
+		"rsz": "assets/re7/rszre7.json",
+		"enums": "assets/re7/enumsre7.json"
+	},
+	"RE8": {
+		"rsz": "assets/re8/rszre8.json",
+		"enums": "assets/re8/enumsre8.json"
+	},
+	"RE2": {
+		"rsz": "assets/re2/rszre2.json",
+		"enums": "assets/re2/enumsre2.json"
+	},
+	"RE3": {
+		"rsz": "assets/re3/rszre3.json",
+		"enums": "assets/re3/enumsre3.json"
+	},
+	"RE4": {
+		"rsz": "assets/re4/rszre4.json",
+		"enums": "assets/re4/enumsre4.json"
+	}
+}

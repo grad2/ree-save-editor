@@ -1,12 +1,11 @@
-use crate::save::remap::{Format, Remap};
-use crate::sdk::asset::Assets;
-use crate::sdk::type_map::{self, ContentLanguage, FieldInfo, TypeInfo, TypeMap};
-use crate::sdk::{types::*, value::Value};
+use ree_lib::rsz::{FieldInfo, TypeInfo, RszMap};
+use ree_lib::types::{StringU16};
+use ree_lib::rsz::Value;
 use num_enum::TryFromPrimitive;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::error::Error;
-use std::io::{Cursor, Read, Seek, Write};
+use std::io::{Read, Seek, Write};
+use strum::Display;
 
 use util::*;
 
@@ -18,7 +17,7 @@ pub enum Ref {
 
 // Some of this stuff comes from via.reflection.TypeKind
 #[repr(i32)]
-#[derive(Clone, Copy, Debug, Deserialize, TryFromPrimitive, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, TryFromPrimitive, PartialEq, Eq, Display)]
 pub enum FieldType {
     Array = -1, // This is hidden in any enums that are similar to this
     Unknown = 0,
@@ -167,7 +166,7 @@ impl FieldValue {
                 let data = (0..size)
                     .map(|_| Ok(reader.read_u16()?))
                     .collect::<Result<Vec<u16>, Box<dyn Error>>>()?;
-                FieldValue::String(Box::new(StringU16::new(data)))
+                FieldValue::String(Box::new(StringU16(data)))
             }
             // TODO: Add Struct weird shit handling
             // These values actually need a size/len
@@ -315,80 +314,6 @@ impl FieldValue {
             FieldValue::U64(_) | FieldValue::S64(_) | FieldValue::F64(_) => 8,
             FieldValue::Struct(v) => v.data.len() as u32,
             _ => 0,
-        }
-    }
-
-    pub fn to_string(
-        &self,
-        field_type: &str,
-        language: ContentLanguage,
-        remaps: &HashMap<String, Remap>,
-        type_map: &TypeMap,
-        assets: &Assets,
-    ) -> String {
-        if let Some(remap) = &remaps.get(field_type) {
-            let evaluated = Format::eval(
-                self,
-                field_type,
-                language,
-                &remap.format,
-                type_map,
-                remaps,
-                assets,
-            );
-            if let Some(evaluated) = evaluated {
-                return evaluated;
-            }
-        }
-        match self {
-            FieldValue::Enum(v) => type_map
-                .get_enum_str(&v.as_i64(), field_type)
-                .cloned()
-                .unwrap_or(v.as_i64().to_string()),
-            FieldValue::Boolean(v) => v.to_string(),
-            FieldValue::U8(v) => v.to_string(),
-            FieldValue::U16(v) => type_map
-                .get_enum_str(&v, field_type)
-                .cloned()
-                .unwrap_or(v.to_string()),
-            FieldValue::U32(v) => type_map
-                .get_enum_str(&v, field_type)
-                .cloned()
-                .unwrap_or(v.to_string()),
-            FieldValue::U64(v) => v.to_string(),
-            FieldValue::S8(v) => v.to_string(),
-            FieldValue::S16(v) => type_map
-                .get_enum_str(&v, field_type)
-                .cloned()
-                .unwrap_or(v.to_string()),
-            FieldValue::S32(v) => type_map
-                .get_enum_str(&v, field_type)
-                .cloned()
-                .unwrap_or(v.to_string()),
-            FieldValue::S64(v) => v.to_string(),
-            FieldValue::Unknown => "Unknown".to_string(),
-            FieldValue::Class(v) => v
-                .to_string(language, type_map, remaps, assets)
-                .unwrap_or("".to_string()),
-            FieldValue::String(v) => v.to_string(),
-            FieldValue::Struct(_) => "Struct".to_string(),
-            _ => "(error) Invalid Field Type in to_string".to_string(),
-        }
-    }
-    pub fn to_string_basic(&self) -> String {
-        match self {
-            FieldValue::Enum(v) => v.as_i64().to_string(),
-            FieldValue::Boolean(v) => v.to_string(),
-            FieldValue::U8(v) => v.to_string(),
-            FieldValue::U16(v) => v.to_string(),
-            FieldValue::U32(v) => v.to_string(),
-            FieldValue::U64(v) => v.to_string(),
-            FieldValue::S8(v) => v.to_string(),
-            FieldValue::S16(v) => v.to_string(),
-            FieldValue::S32(v) => v.to_string(),
-            FieldValue::S64(v) => v.to_string(),
-            FieldValue::String(v) => v.to_string(),
-            _ => "(error) Invalid Field Type in to_string_basic".to_string(),
         }
     }
 }
@@ -673,7 +598,7 @@ impl Array {
                         let size = reader.read_u32()?;
                         let data = (0..size)
                             .map(|_| Ok(reader.read_u16()?)).collect::<Result<Vec<u16>, Box<dyn Error>>>()?;
-                        FieldValue::String(Box::new(StringU16::new(data)))
+                        FieldValue::String(Box::new(StringU16(data)))
                     } else {
                         FieldValue::read_sized(reader, member_type, member_size)?
                     }
@@ -858,7 +783,7 @@ impl Class {
         Ok(())
     }
 
-    pub fn get_type_info<'a>(&'a self, type_map: &'a TypeMap) -> Option<&'a TypeInfo> {
+    pub fn get_type_info<'a>(&'a self, type_map: &'a RszMap) -> Option<&'a TypeInfo> {
         type_map.get_by_hash(self.hash)
     }
 
@@ -927,104 +852,10 @@ impl Class {
     pub fn get_array_mut<'a>(&'a mut self, name: &'a str) -> Option<&'a mut Array> {
         self.get_value_mut(name)?.as_array_mut()
     }
-
-    pub fn eval_refs<'a>(&'a self, refs: &'a Vec<Ref>) -> Option<&'a FieldValue> {
-        let mut cur_value = None;
-        let mut it = refs.iter();
-        let first = it.next()?;
-        if let Ref::Field(field) = first {
-            cur_value = self.get_value(field);
-        }
-
-        for v in it {
-            match v {
-                Ref::Index(index) => {
-                    let val = cur_value?.as_array()?.get_value(*index)?;
-                    cur_value = Some(val);
-                }
-                Ref::Field(field) => {
-                    let val = cur_value?.as_class()?.get_value(field)?;
-                    cur_value = Some(val);
-                }
-            }
-        }
-        cur_value
-    }
-
-    pub fn eval_refs_type<'a>(
-        &'a self,
-        refs: &'a Vec<Ref>,
-        remaps: &HashMap<String, Remap>,
-        type_map: &TypeMap,
-    ) -> Option<String> {
-        let mut cur_value = None;
-        let mut cur_type = type_map.get_by_hash(self.hash);
-        let mut it = refs.iter();
-        let first = it.next()?;
-        if let Ref::Field(field) = first {
-            cur_value = self.get_value(field);
-            if let Some(t) = cur_type {
-                if let Some(field_remap) = remaps.get(&t.name)?.fields.get(field) {
-                    cur_type = type_map.get_by_name(field_remap)
-                }
-            }
-        }
-
-        for v in it {
-            match v {
-                Ref::Index(index) => {
-                    let val = cur_value?.as_array()?.get_value(*index)?;
-                    if let FieldValue::Class(val) = val {
-                        cur_type = type_map.get_by_hash(val.hash);
-                    }
-                    cur_value = Some(val);
-                }
-                Ref::Field(field) => {
-                    let val = cur_value?.as_class()?;
-                    let val = val.get_value(field)?;
-                    if let Some(t) = cur_type {
-                        if let Some(field_remap) = remaps.get(&t.name)?.fields.get(field) {
-                            cur_type = type_map.get_by_name(field_remap)
-                        }
-                    } else {
-                        if let FieldValue::Class(val) = val {
-                            cur_type = type_map.get_by_hash(val.hash);
-                        }
-                    }
-                    cur_value = Some(val);
-                }
-            }
-        }
-        cur_type.map(|x| x.name.clone())
-    }
-
-    pub fn to_string(
-        &self,
-        language: ContentLanguage,
-        type_map: &TypeMap,
-        remaps: &HashMap<String, Remap>,
-        assets: &Assets,
-    ) -> Option<String> {
-        let field_type = type_map.get_by_hash(self.hash)?.name.as_str();
-        if let Some(remap) = &remaps.get(field_type) {
-            let evaluated = Format::eval_class(
-                self,
-                field_type,
-                language,
-                &remap.format,
-                type_map,
-                remaps,
-                assets,
-            );
-            if let Some(evaluated) = evaluated {
-                return Some(evaluated);
-            }
-        }
-        None
-    }
 }
 
-impl TryFrom<&Struct> for Mandrake {
+// TODO: macroize this stuff
+/*impl TryFrom<&Struct> for Mandrake {
     type Error = Box<dyn Error>;
     fn try_from(value: &Struct) -> Result<Self, Self::Error> {
         if value.data.len() > 16 {
@@ -1067,4 +898,4 @@ impl TryFrom<&Struct> for Color {
         let data: [u8; 4] = value.data.as_slice().try_into()?;
         Ok(bytemuck::cast(data))
     }
-}
+}*/

@@ -1,19 +1,11 @@
-pub mod bitfield;
-pub mod compression;
-pub mod edit;
-pub mod file;
-pub mod game_context;
-pub mod gensdk;
-pub mod reerr;
-pub mod rsz;
 pub mod save;
-pub mod sdk;
+pub mod game_context;
+pub mod edit;
+//pub mod bitfield;
+//pub mod sdk;
 
-#[cfg(feature = "scripting")]
+/*#[cfg(feature = "scripting")]
 pub mod bindings;
-
-#[cfg(feature = "tdb")]
-pub mod tdb;
 
 #[cfg(target_arch = "wasm32")]
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -79,7 +71,7 @@ where
     let data = response.text().await?;
     func(&data)?;
     Ok(())
-}
+}*/
 
 /*#[cfg(test)]
 mod tests {
