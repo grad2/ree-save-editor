@@ -143,6 +143,14 @@ impl From<&FieldValue> for Value {
             FieldValue::U16(v) => Value::U16(*v),
             FieldValue::U32(v) => Value::U32(*v),
             FieldValue::U64(v) => Value::U64(*v),
+            FieldValue::Enum(EnumValue::E1(v)) => Value::S8(*v),
+            FieldValue::Enum(EnumValue::E2(v)) => Value::S16(*v),
+            FieldValue::Enum(EnumValue::E4(v)) => Value::S32(*v),
+            FieldValue::Enum(EnumValue::E8(v)) => Value::S64(*v),
+            FieldValue::F32(v) => Value::F32(*v),
+            FieldValue::F64(v) => Value::F64(*v),
+            FieldValue::Boolean(v) => Value::Bool(*v),
+            FieldValue::String(v) => Value::String(*v.clone()),
             _ => Value::Null,
         }
     }

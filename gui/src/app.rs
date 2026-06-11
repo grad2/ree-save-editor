@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc, RwLock}};
+use std::{collections::{HashMap, VecDeque}, sync::{Arc, RwLock, mpsc::{Receiver, Sender, channel}}};
 
 use eframe::{
     self,
@@ -17,25 +17,41 @@ pub struct App {
     config_path: String,
     game_configs: GameConfigs,
     game_contexts: Arc<RwLock<HashMap<Game, GameData>>>,
+    game_load_queue: VecDeque<Game>,
+    loading_game: Option<Game>,
+    game_data_receiver: Receiver<GameData>,
+    game_data_sender: Sender<GameData>,
 }
 
 impl App {
     pub fn new(config_path: String, config: Config) -> Self {
-        let dock_state = DockState::new(vec![]);
+        let dock_state = DockState::new(vec![Tab::from(SaveFileView::new(&config))]);
         let game_configs = load_game_configs("game_configs.json")
             .unwrap_or_default();
+
+        let (tx, rx) = channel::<GameData>();
         Self {
             tree: dock_state,
             game_configs,
             config_path,
             game_contexts: Arc::new(RwLock::new(HashMap::new())),
-            config
+            config,
+            game_load_queue: VecDeque::new(),
+            loading_game: None,
+            game_data_sender: tx,
+            game_data_receiver: rx,
         }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(game) = self.loading_game {
+            if let Ok(game_data) = self.game_data_receiver.try_recv() {
+                self.game_contexts.write().unwrap().insert(game, game_data);
+                self.loading_game = None;
+            }
+        }
         TopBottomPanel::top("Menu Bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("REE Save Editor");
@@ -86,6 +102,7 @@ impl eframe::App for App {
                 let mut viewer = Viewer {
                     game_contexts: &self.game_contexts,
                     config: &self.config,
+                    game_load_queue: &mut self.game_load_queue,
                 };
                 DockArea::new(&mut self.tree)
                     .show_close_buttons(true)
@@ -98,6 +115,34 @@ impl eframe::App for App {
                     .secondary_button_on_modifier(true)
                     .show_inside(ui, &mut viewer);
                 });
+
+        //log::info!("queue: {:?}", self.game_load_queue);
+        //log::info!("loaded: {:?}", self.game_contexts.read().unwrap().keys());
+
+        if self.loading_game.is_none() && let Some(game) = self.game_load_queue.pop_front() 
+            && !self.game_contexts.read().unwrap().contains_key(&game) {
+            if let Some(game_config) = self.game_configs.get(&game) {
+                let game_config = game_config.clone();
+                let tx = self.game_data_sender.clone();
+                self.loading_game = Some(game);
+                std::thread::spawn(move || {
+                    log::info!("trying to load {:?} for {:?}", game_config, game);
+                    let game_data = match GameData::try_from(&game_config) {
+                        Ok(game_data) => game_data,
+                        Err(e) => {
+                            log::error!("Could not load game data {:?}", game_config);
+                            return;
+                        }
+                    };
+
+                    let Ok(()) = tx.send(game_data) else {
+                        log::error!("Could not send game data"); // TODO: proper error from tx.send
+                                                                 // here
+                        return;
+                    };
+                });
+            }
+        }
     }
 }
 

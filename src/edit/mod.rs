@@ -1,10 +1,10 @@
-use std::cell::RefCell;
+use std::{collections::HashMap};
 
 use eframe::egui::{self, CollapsingHeader, Frame, ScrollArea, TextEdit, Ui};
 use serde::{Deserialize, Serialize};
-use ree_lib::{context::EngineContext, types::StringU16};
+use ree_lib::{context::EngineContext, rsz::Value, types::StringU16};
 
-use crate::save::{SaveFile, SaveFlags, eval::RemapEvaluator, types::{Array, Class, EnumValue, Field, FieldValue, Struct}};
+use crate::save::{SaveFile, SaveFlags, remap::Remap, types::{Array, Class, EnumValue, Field, FieldValue, Struct}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathNode {
@@ -21,7 +21,7 @@ pub enum Action {
     ModifyReference
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ArrayConfig {
     pub right_margin: f32,
     pub target_row_height: f32,
@@ -56,17 +56,18 @@ impl Default for ArrayConfig {
 
 pub struct EditContext<'a> {
     pub engine_context: &'a EngineContext<'a>,
-    //remaps: &'a RemapEvaluator<'a>,
-    pub path: RefCell<Vec<PathNode>>,
-    pub config: &'a EditorConfig
+    pub remaps: &'a HashMap<String, Remap>,
+    pub config: &'a EditorConfig,
+    pub path: &'a mut Vec<PathNode>,
+    pub query_cache: &'a mut HashMap<(String, String), Value>,
 }
 
 pub trait Editable {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext);
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext);
 }
 
 impl Editable for SaveFile {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
         self.flags.ui(ui, ctx);
         for (unk, class) in &mut self.fields {
             let class_label = ctx.engine_context.rsz_map.get_by_hash(class.hash)
@@ -81,7 +82,7 @@ impl Editable for SaveFile {
 }
 
 impl Editable for SaveFlags {
-    fn ui(&mut self, ui: &mut Ui, _ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut Ui, _ctx: &mut EditContext) {
         ui.collapsing("Save Flags", |ui| {
             ui.vertical(|ui| {
                 let flag_checkbox = |ui: &mut Ui, flags: &mut SaveFlags, flag: SaveFlags, label: &str| {
@@ -102,23 +103,34 @@ impl Editable for SaveFlags {
 }
 
 impl Editable for Class {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
-        ctx.path.borrow_mut().push(PathNode::Class(self.hash));
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
+        ctx.path.push(PathNode::Class(self.hash));
 
         for  field in self.fields.iter_mut() {
             field.ui(ui, ctx);
         }
 
-        ctx.path.borrow_mut().pop();
+        ctx.path.pop();
     }
 }
 
 impl Editable for Array {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
-        let add_array_value = |value: &mut FieldValue, i: usize, ui: &mut egui::Ui| {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
+        let ArrayConfig { 
+            right_margin, 
+            target_row_height: target_height, 
+            item_spacing: spacing, 
+            max_inf_height, 
+            available_height_delta, 
+            min_max_height, 
+            height_clamp, 
+            max_rows 
+        } = ctx.config.array;
+
+        let mut add_array_value = |value: &mut FieldValue, i: usize, ui: &mut egui::Ui| {
             let index_label = format!("{}:", i);
             ui.push_id(i, |ui| {
-                ctx.path.borrow_mut().push(PathNode::Index(i));
+                ctx.path.push(PathNode::Index(i));
                 match value {
                     FieldValue::Class(_) | FieldValue::Array(_) => {
                         egui::CollapsingHeader::new(index_label)
@@ -133,22 +145,12 @@ impl Editable for Array {
                         });
                     }
                 }
-                ctx.path.borrow_mut().pop();
+                ctx.path.pop();
             });
         };
 
         ui.scope(|ui| {
             // wtf are these variable names dawg
-            let ArrayConfig { 
-                right_margin, 
-                target_row_height: target_height, 
-                item_spacing: spacing, 
-                max_inf_height, 
-                available_height_delta, 
-                min_max_height, 
-                height_clamp, 
-                max_rows 
-            } = ctx.config.array;
 
             ui.style_mut().spacing.item_spacing.y = spacing;
             ui.style_mut().spacing.interact_size.y = target_height;
@@ -226,23 +228,45 @@ impl Editable for Array {
 }
 
 impl Editable for Field {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
-        ctx.path.borrow_mut().push(PathNode::Field(self.hash));
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
+        ctx.path.push(PathNode::Field(self.hash));
 
         let parent_class_hash = {
-            let path = ctx.path.borrow();
+            let path = &ctx.path;
             path.iter().rev().find_map(|node| {
                 if let PathNode::Class(hash) = node { Some(*hash) } else { None }
             })
         };
 
+        //parent type info
         let type_info = parent_class_hash.and_then(|h| ctx.engine_context.rsz_map.get_by_hash(h));
+
+        // parent class
+        let class_name = type_info.map(|t| t.name.clone())
+            .unwrap_or_default();
+
         let field_info = type_info.and_then(|ti| ti.get_field_by_hash(self.hash));
 
         let field_name = field_info.map(|f| f.name.clone())
             .unwrap_or(format!("{:08x}", self.hash));
-        let type_label = field_info.map(|f| f.original_type.clone())
+        // field type label
+        let mut type_label = field_info.map(|f| f.original_type.clone())
             .unwrap_or(format!("{:?}", self.field_type));
+
+
+        // parent class -> field -> remapped field type
+        if let Some(remap) = ctx.remaps.get(&class_name)
+            && let Some(remapped_type) = remap.fields.get(&field_name) {
+                if &type_label != "ace.Bitset" {
+                    log::info!("Remapped {field_name}: {type_label} -> {remapped_type}");
+                }
+                type_label = remapped_type.clone();
+        }
+
+        let rsz_val: Value = Value::from(&self.value);
+        let remapped_text = ctx.try_remap(&class_name, &field_name, &rsz_val);
+
+        let enum_string = ctx.try_enum_str(&type_label, &self.value);
 
         ui.push_id(self.hash, |ui| {
             match &mut self.value {
@@ -255,19 +279,28 @@ impl Editable for Field {
                 }
                 _ => {
                     ui.horizontal(|ui| {
-                        ui.label(format!("{}:", field_name));
+                        if let Some(human_name) = remapped_text {
+                            ui.label(format!("{}: {}", field_name, human_name));
+                        } else {
+                            ui.label(format!("{}:", field_name));
+                        };
                         self.value.ui(ui, ctx);
+
+                        if let Some(enum_string) = enum_string {
+                            ui.label(format!("{}", enum_string));
+                        }
+
                     });
                 }
             }
         });
 
-        ctx.path.borrow_mut().pop();
+        ctx.path.pop();
     }
 }
 
 impl Editable for FieldValue {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
         match self {
             FieldValue::Boolean(v) => v.ui(ui, ctx),
             FieldValue::Enum(v) => v.ui(ui, ctx),
@@ -298,7 +331,7 @@ macro_rules! derive_editable_num {
     ($( $ty:ty ),*) => {
         $(
             impl Editable for $ty {
-                fn ui(&mut self, ui: &mut eframe::egui::Ui, _ctx: &EditContext) {
+                fn ui(&mut self, ui: &mut eframe::egui::Ui, _ctx: &mut EditContext) {
                     ui.add(
                         eframe::egui::DragValue::new(self)
                         .speed(1.0)
@@ -314,13 +347,13 @@ derive_editable_num!(i8, i16, i32, i64, u8, u16, u32, u64);
 derive_editable_num!(f32, f64);
 
 impl Editable for bool {
-    fn ui(&mut self, ui: &mut eframe::egui::Ui, _ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut eframe::egui::Ui, _ctx: &mut EditContext) {
         ui.checkbox(self, "");
     }
 }
 
 impl Editable for EnumValue {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
         match self {
             EnumValue::E1(v) => v.ui(ui, ctx),
             EnumValue::E2(v) => v.ui(ui, ctx),
@@ -331,13 +364,13 @@ impl Editable for EnumValue {
 }
 
 impl Editable for String {
-    fn ui(&mut self, ui: &mut egui::Ui, _ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, _ctx: &mut EditContext) {
         ui.add(TextEdit::singleline(self).clip_text(false));
     }
 }
 
 impl Editable for StringU16 {
-    fn ui(&mut self, ui: &mut egui::Ui, _ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, _ctx: &mut EditContext) {
         let mut s = String::from_utf16_lossy(&self.0);
         ui.add(TextEdit::singleline(&mut s).clip_text(false));
         let encoded: Vec<u16> = s.encode_utf16().collect();
@@ -346,7 +379,7 @@ impl Editable for StringU16 {
 }
 
 impl<T: Editable> Editable for Vec<T> {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
         ui.horizontal(|ui| {
             for (i, v) in self.iter_mut().enumerate() {
                 ui.push_id(i, |ui| {
@@ -358,7 +391,7 @@ impl<T: Editable> Editable for Vec<T> {
 }
 
 impl<T: Editable, const N: usize> Editable for [T; N] {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
         ui.horizontal(|ui| {
             for (i, v) in self.iter_mut().enumerate() {
                 ui.push_id(i, |ui| {
@@ -370,7 +403,7 @@ impl<T: Editable, const N: usize> Editable for [T; N] {
 }
 
 impl Editable for Struct {
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &EditContext) {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
         self.data.ui(ui, ctx);
     }
 }

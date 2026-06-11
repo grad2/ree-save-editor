@@ -5,10 +5,16 @@ use ree_lib::data::{DataSource, deserialize_data_sources};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Remap {
+    #[serde(default)]
     #[serde(deserialize_with = "deserialize_format_string")]
     pub format: Vec<FormatNode>,
+    // remaps a field from one type to another
+    #[serde(default)]
+    pub fields: HashMap<String, String>,
+    #[serde(default)]
     #[serde(deserialize_with = "deserialize_data_sources")]
     pub queries: HashMap<String, DataSource>, 
+    #[serde(default)]
     #[serde(deserialize_with = "deserialize_data_sources")]
     pub data: HashMap<String, DataSource>, 
 }

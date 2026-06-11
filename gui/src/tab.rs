@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, error::Error, io::Write, ops::Range, path::{Path, PathBuf}};
 
 use eframe::egui::{CollapsingHeader, ComboBox, DragValue, Ui};
-use ree_lib::{assets::bundle::Bundle, context::EngineContext, language::Language, rsz::RszMap};
+use ree_lib::{assets::bundle::Bundle, context::EngineContext, enums::EnumMap, language::Language, rsz::RszMap};
 use ree_save_core::{edit::{EditContext, Editable, EditorConfig}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game}};
 use uuid::Uuid;
 
@@ -144,17 +144,47 @@ impl SaveFileView {
         ui.separator();
 
         if let Some(save_file) = &mut self.save_file {
-            let rsz_map = RszMap::default();
-            let assets = Bundle::default();
-            //let remaps = HashMap::default();
-            let engine = EngineContext::new(config.language, &rsz_map, &assets);
-            let path = Vec::with_capacity(50);
-            let ctx = EditContext {
-                engine_context: &engine,
-                path: RefCell::new(path),
-                config: &config.editor
+            let empty_rsz_map = RszMap::default();
+            let empty_assets = Bundle::default();
+            let empty_enums = EnumMap::default();
+            let empty_remaps = HashMap::new();
+
+            // verbose but whatever who cares
+            let rsz_map = if let Some(game_context) = game_context {
+                &game_context.rsz
+            } else {
+                &empty_rsz_map
             };
-            save_file.ui(ui, &ctx);
+
+            let assets = if let Some(game_context) = game_context {
+                &game_context.bundle
+            } else {
+                &empty_assets
+            };
+
+            let enums = if let Some(game_context) = game_context {
+                &game_context.enums
+            } else {
+                &empty_enums
+            };
+
+            let remaps = if let Some(game_context) = game_context {
+                &game_context.remaps
+            } else {
+                &empty_remaps
+            };
+
+            let engine = EngineContext::new(config.language, rsz_map, assets, enums);
+            let mut query_cache = HashMap::new();
+            let mut path = Vec::with_capacity(50);
+            let mut ctx = EditContext {
+                engine_context: &engine,
+                config: &config.editor,
+                remaps,
+                path: &mut path,
+                query_cache: &mut query_cache,
+            };
+            save_file.ui(ui, &mut ctx);
         }
     }
 
