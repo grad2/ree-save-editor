@@ -32,6 +32,11 @@ macro_rules! define_games {
                 None
             }
 
+            pub fn to_string(&self) -> &str {
+                $( if *self == Game::$variant { return $name; } )*
+                ""
+            }
+
             pub fn get_mandarin_seeds(&self) -> Option<(u64, u64)> {
                 match self {
                     $( 

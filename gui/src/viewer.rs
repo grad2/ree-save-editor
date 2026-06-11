@@ -33,7 +33,20 @@ impl<'a> egui_dock::TabViewer for Viewer<'a> {
 
     fn title(&mut self, tab: &mut Self::Tab) -> eframe::egui::WidgetText {
         let title: String = match &tab.tab {
-            TabType::SaveFile(s) => format!("{}", s.path).into(),
+            TabType::SaveFile(s) => {
+                use std::path::PathBuf;
+
+                let file_str = match &s.file_picker.selected_file {
+                    Some(path) => {
+                        let count = path.iter().count();
+                        let last_two: PathBuf = path.iter().skip(count.saturating_sub(2)).collect();
+                        last_two.display().to_string()
+                    }
+                    None => "(empty)".to_string(),
+                };
+
+                format!("{:?}|{}", s.game, file_str).into()
+            },
         };
         title.into()
     }

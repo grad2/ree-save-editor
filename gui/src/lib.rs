@@ -3,6 +3,7 @@ pub mod steam;
 pub mod tab;
 pub mod viewer;
 pub mod config;
+pub mod dialog;
 
 use eframe::egui::{self};
 

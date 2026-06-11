@@ -54,19 +54,7 @@ impl eframe::App for App {
                         surface.push_to_focused_leaf(Tab::from(file_view));
                     }
                 });
-                ui.menu_button("Options", |ui| {
-                    ui.style_mut().wrap_mode = Some(eframe::egui::TextWrapMode::Extend);
-                    ui.menu_button(self.config.language.to_string(), |ui| {
-                        use strum::IntoEnumIterator;
-                        for option in Language::iter().filter(|x| INGAME_LANGUAGES.contains(&x)) {
-                                ui.selectable_value(
-                                    &mut self.config.language,
-                                    option,
-                                    option.to_string(),
-                                );
-                            }
-                    });
-                });
+
                 // TODO: add a live update type thing that looks at file modification time from last
                 // reloaded
                 if ui.button("Reload Config").clicked() {
@@ -75,6 +63,20 @@ impl eframe::App for App {
                         Err(e) => log::error!("Error: {e}. Could not load config from path {}", self.config_path),
                     }
                 }
+
+                ui.menu_button("Options", |ui| {
+                    ui.style_mut().wrap_mode = Some(eframe::egui::TextWrapMode::Extend);
+                    ui.menu_button(self.config.language.to_string(), |ui| {
+                        use strum::IntoEnumIterator;
+                        for option in Language::iter().filter(|x| INGAME_LANGUAGES.contains(x)) {
+                                ui.selectable_value(
+                                    &mut self.config.language,
+                                    option,
+                                    option.to_string(),
+                                );
+                            }
+                    });
+                });
             });
         });
 

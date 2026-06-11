@@ -1,11 +1,11 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, ops::Range, path::PathBuf};
+use std::{cell::RefCell, collections::HashMap, error::Error, io::Write, ops::Range, path::{Path, PathBuf}};
 
-use eframe::egui::{DragValue, TextEdit, Ui};
+use eframe::egui::{CollapsingHeader, ComboBox, DragValue, Ui};
 use ree_lib::{assets::bundle::Bundle, context::EngineContext, language::Language, rsz::RszMap};
 use ree_save_core::{edit::{EditContext, Editable, EditorConfig}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game}};
 use uuid::Uuid;
 
-use crate::{config::Config, steam::{self, Steam}};
+use crate::{config::Config, dialog::{AsyncFileDialog, DialogType}, steam::{self, Steam}};
 
 pub struct Tab {
     pub tab: TabType,
@@ -28,12 +28,13 @@ impl From<SaveFileView> for Tab {
 }
 
 pub struct SaveFileView {
-    pub path: String,
-    output: Option<String>,
     save_file: Option<SaveFile>,
-    game: Game,
+    pub game: Game,
     steam: Steam,
     last_error: Option<Box<dyn Error>>,
+
+    pub file_picker: AsyncFileDialog,
+    save_as_picker: AsyncFileDialog,
 
     // Save Options
     brute_force: bool,
@@ -45,8 +46,6 @@ pub struct SaveFileView {
 impl SaveFileView {
     pub fn new(config: &Config) -> Self {
         Self {
-            path: "".to_string(),
-            output: config.output_dir.clone(),
             save_file: None,
             game: config.game,
             steam: Steam::new(config.id, config.steam_path.clone()),
@@ -54,6 +53,10 @@ impl SaveFileView {
             brute_force: false,
             brute_force_range: (0x0110000100000000u64..0x01100001ffffffffu64),
             curve_index: None,
+            file_picker: AsyncFileDialog::new().filter("bin", &["bin", "*"])
+                .title("Browse"),
+            save_as_picker: AsyncFileDialog::new().filter("bin", &["bin", "*"])
+                .title("Save As").dialog_type(DialogType::Save),
             dump: false,
         }
     }
@@ -62,23 +65,54 @@ impl SaveFileView {
         let game_context = game_contexts.get(&self.game);
 
         ui.horizontal(|ui| {
-            ui.add(TextEdit::singleline(&mut self.path).clip_text(false));
-
-            if ui.button("Save").clicked() {
-
-            }
-
-            if ui.button("Load").clicked() {
-                self.load_save(game_context);
+            if let Some(path) = &self.file_picker.selected_file {
+                ui.label(format!("File: {}", path.display()));
+            } else {
+                ui.label("Click Browse to select a file");
             }
         });
 
         ui.horizontal(|ui| {
-            self.steam.edit_steam_id(ui);
-            if let Some(path) = self.steam.found_file(ui, self.game) {
-                self.path = path;
+            if self.file_picker.ui(ui, false) {
                 self.load_save(game_context);
             };
+
+            if ui.button("Load").clicked() {
+                self.load_save(game_context);
+            }
+
+            if ui.button("Save").clicked() {
+                self.save_file(self.file_picker.selected_file.clone(), config);
+            }
+
+            if self.save_as_picker.ui(ui, false) {
+                self.save_file(self.save_as_picker.selected_file.clone(), config);
+                self.save_as_picker.selected_file = None;
+            } 
+
+            ui.style_mut().wrap_mode = Some(eframe::egui::TextWrapMode::Extend);
+            ui.label("Game Profile");
+            ComboBox::from_id_salt("select_game")
+                .selected_text(self.game.to_string())
+                .show_ui(ui, |ui| {
+                    use strum::IntoEnumIterator;
+                    for option in Game::iter() {
+                        ui.selectable_value(
+                            &mut self.game,
+                            option,
+                            option.to_string(),
+                        );
+                    }
+                });
+        });
+
+        ui.horizontal(|ui| {
+            self.steam.edit_steam_id(ui);
+            self.steam.select_user(ui);
+            if let Some(path) = self.steam.found_file(ui, self.game) {
+                self.file_picker.selected_file = Some(PathBuf::from(path));
+                self.load_save(game_context);
+            }
             self.steam.edit_steam_path(ui);
         });
 
@@ -88,6 +122,7 @@ impl SaveFileView {
                 ui.add(DragValue::new(val).speed(1.0));
             }
         });
+
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.brute_force, "Brute Force SteamID");
             ui.checkbox(&mut self.dump, "Dump Bytes");
@@ -106,6 +141,8 @@ impl SaveFileView {
             ui.label(format!("Error: {}", last_error));
         }
 
+        ui.separator();
+
         if let Some(save_file) = &mut self.save_file {
             let rsz_map = RszMap::default();
             let assets = Bundle::default();
@@ -122,12 +159,13 @@ impl SaveFileView {
     }
 
     fn load_save(&mut self, game_context: Option<&GameData>) {
-        let expanded = shellexpand::full(&self.path)
-            .unwrap_or(std::borrow::Cow::Borrowed(&self.path));
+        let Some(path) = &self.file_picker.selected_file else {
+            self.last_error = Some("No save file to load".into());
+            return;
+        };
 
-        let path = PathBuf::from(expanded.as_ref());
         if path.exists() {
-            match std::fs::read(&path) {
+            match std::fs::read(path) {
                 Ok(data) => {
                     let mut options = SaveOptions::new(self.game);
 
@@ -161,5 +199,67 @@ impl SaveFileView {
             }
 
         }
+    }
+
+    fn save_file(&mut self, path: Option<PathBuf>, config: &Config) {
+        log::info!("Saving file to {path:?}");
+        let Some(path) = path else {
+            self.last_error = Some("No save location to save to".into());
+            return;
+        };
+
+        if path.exists() && !path.is_file() {
+            self.last_error = Some(format!("{path:?} is not a file").into());
+            return;
+        }
+
+        if self.save_file.is_some() {
+            self.backup_loaded_save(&path, config);
+        }
+        if let Some(save_file) = &self.save_file {
+            self.file_picker.selected_file = Some(path.clone());
+            // backup saves if the file being written to already exists
+            match std::fs::File::create(&path) {
+                Ok(mut f) => {
+                    let mut options = SaveOptions::new(self.game);
+                    if let Some(id) = self.steam.steam_id {
+                        options = options.id(id);
+                    }
+                    if let Some(curve_index) = self.curve_index {
+                        options = options.curve_index(curve_index);
+                    }
+
+                    let data = save_file.write_save(&options);
+                    match data {
+                        Ok(data) => {
+                            match f.write_all(&data) {
+                                Ok(_) => log::info!("Save File to {path:?}"),
+                                Err(e) => self.last_error = Some(Box::new(e)),
+                            }
+                        }
+                        Err(e) => self.last_error = Some(Box::new(e)),
+                    }
+                }
+                Err(e) => {
+                    self.last_error = Some(Box::new(e));
+                },
+            }
+
+        }
+    }
+
+    pub fn backup_loaded_save(&mut self, path: &Path, config: &Config) {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+        let file_stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let ext = path.extension().unwrap_or_default().to_string_lossy();
+        let backup_name = format!("{}_{}.{}.bak", file_stem, timestamp, ext);
+        let backup_path = path.with_file_name(backup_name);
+
+        if let Err(e) = std::fs::copy(path, &backup_path) {
+            self.last_error = Some(format!("Failed to create backup: {}", e).into());
+            return;
+        }
+
+        log::info!("Created backup at: {}", backup_path.display());
     }
 }

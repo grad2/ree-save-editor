@@ -165,26 +165,24 @@ impl Steam {
     pub fn found_file(&mut self, ui: &mut Ui, _game: Game) -> Option<String> {
         let mut res = None;
 
-        self.select_user(ui);
+        if !self.users.is_empty() && let Some(steam_id) = self.steam_id {
+            let save_files = get_save_files(&self.steam_path, steam_id, _game);
 
-        if !self.users.is_empty() {
-            if let Some(steam_id) = self.steam_id {
-                let save_files = get_save_files(&self.steam_path, steam_id, _game);
-                if !save_files.is_empty() {
-                    ComboBox::from_id_salt("save_select")
-                        .selected_text("Select Save File")
-                        .show_ui(ui, |ui| {
-                            for file in &save_files {
-                                let val = file.to_string_lossy().to_string();
-                                if ui.selectable_label(false, &val).clicked() {
-                                    res = Some(val);
-                                }
+            if !save_files.is_empty() {
+                ComboBox::from_id_salt("save_select")
+                    .selected_text("Select Save File")
+                    .show_ui(ui, |ui| {
+                        for file in &save_files {
+                            let val = file.to_string_lossy().to_string();
+                            if ui.selectable_label(false, &val).clicked() {
+                                res = Some(val);
                             }
-                        });
-                }
+                        }
+                    });
             }
         }
-        return res;
+
+        res
     }
 }
 
