@@ -132,6 +132,34 @@ pub enum FieldValue {
     Class(Box<Class>),
 }
 
+use std::fmt;
+
+impl fmt::Display for FieldValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Boolean(v) => write!(f, "{}", v),
+            Self::S8(v)  => write!(f, "{}", v),
+            Self::U8(v)  => write!(f, "{}", v),
+            Self::S16(v) => write!(f, "{}", v),
+            Self::U16(v) => write!(f, "{}", v),
+            Self::S32(v) => write!(f, "{}", v),
+            Self::U32(v) => write!(f, "{}", v),
+            Self::S64(v) => write!(f, "{}", v),
+            Self::U64(v) => write!(f, "{}", v),
+            Self::F32(v) => write!(f, "{}", v),
+            Self::F64(v) => write!(f, "{}", v),
+            Self::C8(v)  => write!(f, "{}", *v as char),
+            Self::C16(v) => write!(f, "{}", v),
+            Self::Enum(v)   => write!(f, "{:?}", v), 
+            Self::Unknown   => write!(f, "Unknown"),
+            Self::Array(a)  => write!(f, "<Array len={}>", a.values.len()),
+            Self::String(s) => write!(f, "{}", s),
+            Self::Struct(v) => write!(f, "<Struct size={}>", v.data.len()),
+            Self::Class(v)  => write!(f, "<Class hash={}>", v.hash),
+        }
+    }
+}
+
 impl From<&FieldValue> for Value {
     fn from(value: &FieldValue) -> Self {
         match value {

@@ -44,7 +44,9 @@ impl<'a> EditContext<'a> {
         let remap = self.remaps.get(remap_key)?;
         let mut res = String::new();
         let rsz_val: Value = Value::from(val);
+        let type_info = self.engine_context.rsz_map.get_type(remap_key);
         for node in &remap.format {
+
             use super::remap::FormatNode::*;
             match node {
                 Literal(l) => res.push_str(l),
@@ -59,11 +61,26 @@ impl<'a> EditContext<'a> {
                     res.push_str(&data);
                 },
                 Field(f) => {
-                    log::debug!("Not implemented: Field({f})");
+                    if let FieldValue::Class(class) = val {
+                        if let Some(field) = class.get_field(f) && let Some(field_info) = type_info.and_then(|t| t.get_field(f)) {
+                            let type_label = remap.fields.get(f).unwrap_or(&field_info.original_type);
+                            if let FieldValue::Class(_) = field.value {
+                                let val = self.remap_format(type_label, &field.value)?;
+                                res.push_str(&val);
+                            } else if self.remaps.contains_key(type_label) {
+                                let val = self.remap_format(type_label, &field.value)?;
+                                res.push_str(&val);
+                            } else {
+                                res.push_str(&field.value.to_string())
+                            }
+                        }
+                    } else {
+                        log::info!("Field({f}) cannot be used on non-classes");
+                    }
                 },
                 Convert(c) => {
                     let enum_str = self.try_enum_str(remap_key, val)?;
-                    let converted_val = self.try_enum_field_val(remap_key, &enum_str)?;
+                    let converted_val = self.try_enum_field_val(c, &enum_str)?;
                     let converted_str = self.remap_format(c, &converted_val)?;
                     res.push_str(&converted_str);
                 },

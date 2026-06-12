@@ -1,8 +1,9 @@
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, io::Cursor, sync::Arc, time::Instant};
 
+use anyhow::Result;
 use eframe::egui::{self, CollapsingHeader, Frame, ScrollArea, TextEdit, Ui};
 use serde::{Deserialize, Serialize};
-use ree_lib::{context::EngineContext, rsz::Value, types::StringU16};
+use ree_lib::{context::EngineContext, rsz::{self, FieldInfo, RszMap, TypeInfo, Value, deserializer::RszDeserializer}, types::{Mandrake, StringU16, Vec2, Vec3, Vec4, Color}};
 
 use crate::save::{SaveFile, SaveFlags, remap::Remap, types::{Array, Class, EnumValue, Field, FieldValue, Struct}};
 
@@ -68,7 +69,7 @@ impl<'a> EditContext<'a> {
         ui: &mut egui::Ui,
         value: &mut FieldValue,
         remap_key: &str,
-        id_salt: impl std::hash::Hash,
+        id_salt: impl std::hash::Hash + Copy,
     ) -> bool {
         let mut changed = false;
 
@@ -83,9 +84,9 @@ impl<'a> EditContext<'a> {
         };
 
         let cache_id = ui.make_persistent_id(("dropdown_cache", remap_key));
-
-        let start = Instant::now();
-
+        let search_id = ui.make_persistent_id(("dropdown_search", remap_key, id_salt));
+        let mut search_text = ui.data_mut(|d| d.get_temp::<String>(search_id).unwrap_or_default());
+        //let start = Instant::now();
         let cached_options: Arc<Vec<(FieldValue, String)>> = ui.data_mut(|d| {
             let cached = d.get_temp::<Arc<Vec<(FieldValue, String)>>>(cache_id);
             match cached {
@@ -125,12 +126,23 @@ impl<'a> EditContext<'a> {
                     arc_opts
                 }
             }
-
         });
+
         egui::ComboBox::from_id_salt(id_salt)
             .selected_text(current_preview)
             .show_ui(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Search:");
+                    ui.text_edit_singleline(&mut search_text);
+                });
+                ui.separator();
+                let search_lower = search_text.to_lowercase();
+
                 for (option_val, option_text) in cached_options.iter() {
+                    if !search_lower.is_empty() && !option_text.to_lowercase().contains(&search_lower) {
+                        continue;
+                    }
+
                     let is_selected = value.as_any_u64() == option_val.as_any_u64();
 
                     if ui.selectable_label(is_selected, option_text).clicked() {
@@ -140,7 +152,7 @@ impl<'a> EditContext<'a> {
                 }
             });
         //log::info!("Enum drop time: {}", start.elapsed().as_millis());
-
+        ui.data_mut(|d| d.insert_temp(search_id, search_text));
         changed
     }
 }
@@ -210,20 +222,73 @@ impl Editable for Array {
             max_rows 
         } = ctx.config.array;
 
+        let parent_class_hash = {
+            let path = &ctx.path;
+            path.iter().rev().find_map(|node| {
+                if let PathNode::Class(hash) = node { Some(*hash) } else { None }
+            })
+        };
+
+        let parent_field_hash = {
+            let path = &ctx.path;
+            path.iter().rev().find_map(|node| {
+                if let PathNode::Field(hash) = node { Some(*hash) } else { None }
+            })
+        };
+
+        let get_type_label = || {
+            let type_info = parent_class_hash.and_then(|h| ctx.engine_context.rsz_map.get_by_hash(h))?;
+            let field_info = type_info.get_field_by_hash(parent_field_hash?)?;
+            let remap = ctx.remaps.get(&type_info.name)?;
+            let type_label = remap.fields.get(&field_info.name).unwrap_or(&field_info.original_type);
+            Some(type_label)
+        };
+
         let mut add_array_value = |value: &mut FieldValue, i: usize, ui: &mut egui::Ui| {
-            let index_label = format!("{}:", i);
             ui.push_id(i, |ui| {
                 ctx.path.push(PathNode::Index(i));
                 match value {
-                    FieldValue::Class(_) | FieldValue::Array(_) => {
+                    FieldValue::Class(c) => {
+                        let type_info = ctx.engine_context.rsz_map.get_by_hash(c.hash); // idfk
+                                                                                        // backup ig
+                                                                                        // stupid
+                                                                                        // but
+                                                                                        // whatevers
+                        let index_label = if let Some(type_label) = get_type_label().or_else(|| type_info.map(|t| &t.name)) {
+                            if let Some(formatted) = ctx.remap_format(&type_label.replace("[]", ""), value) {
+                                format!("{i}: {formatted}")
+                            } else {
+                                format!("{}: {type_label}", i)
+                            }
+                        } else {
+                            format!("{}: ", i)
+                        };
                         egui::CollapsingHeader::new(index_label)
+                            .id_salt(i)
+                            .show(ui, |ui| {
+                                value.ui(ui, ctx);
+                            });
+                    }
+                    FieldValue::Array(_) => {
+                        let index_label = if let Some(type_label) = get_type_label() 
+                            && let Some(formatted) = ctx.remap_format(&type_label.replace("[]", ""), value) {
+                                format!("{i}: {formatted}")
+                            } else {
+                                format!("{}:", i)
+                            };
+                        egui::CollapsingHeader::new(index_label)
+                            .id_salt(i)
                             .show(ui, |ui| {
                                 value.ui(ui, ctx);
                             });
                     }
                     _ => {
+                        let index_label = format!("{}:", i);
                         ui.horizontal(|ui| {
                             ui.label(index_label);
+                            if let Some(type_label) = get_type_label() {
+                                ctx.draw_remapped_dropdown(ui, value, type_label, i);
+                            }
                             value.ui(ui, ctx);
                         });
                     }
@@ -341,7 +406,7 @@ impl Editable for Field {
         if let Some(remap) = ctx.remaps.get(&class_name)
             && let Some(remapped_type) = remap.fields.get(&field_name) {
                 type_label = remapped_type.clone();
-            }
+        }
 
         ui.push_id(self.hash, |ui| {
             match &mut self.value {
@@ -355,15 +420,8 @@ impl Editable for Field {
                 _ => {
                     ui.horizontal(|ui| {
                         ui.label(format!("{}:", field_name));
-                        if ctx.remaps.contains_key(&type_label) {
-                            ctx.draw_remapped_dropdown(ui, &mut self.value, &type_label, self.hash);
-                            //if let Some(formatted) = ctx.remap_format(&type_label, &self.value) {
-                            //    ui.label(formatted);
-                            //}
-                        }
-
+                        ctx.draw_remapped_dropdown(ui, &mut self.value, &type_label, self.hash);
                         self.value.ui(ui, ctx);
-
                     });
                 }
             }
@@ -476,8 +534,176 @@ impl<T: Editable, const N: usize> Editable for [T; N] {
     }
 }
 
+macro_rules! try_edit_as {
+    ($data:expr, $ui:expr, $ctx:expr, $ty:ty) => {
+        if let Ok(v) = bytemuck::try_from_bytes_mut::<$ty>($data) {
+            v.ui($ui, $ctx);
+            return;
+        }
+    };
+    ($name:expr, $data:expr, $ui:expr, $ctx:expr, { $( $pat:literal => $ty:ty ),* $(,)? }) => {
+        match $name {
+            $( $pat => try_edit_as!($data, $ui, $ctx, $ty), )*
+            _ => {}
+        }
+    };
+}
+
 impl Editable for Struct {
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
-        self.data.ui(ui, ctx);
+        let parent_class_hash = ctx.path.iter().rev().find_map(|node| {
+            if let PathNode::Class(hash) = node { Some(*hash) } else { None }
+        });
+        let parent_field_hash = ctx.path.iter().rev().find_map(|node| {
+            if let PathNode::Field(hash) = node { Some(*hash) } else { None }
+        });
+
+        let struct_type_name: Option<String> = parent_class_hash
+            .and_then(|h| ctx.engine_context.rsz_map.get_by_hash(h))
+            .and_then(|type_info| {
+                let field_info = type_info.get_field_by_hash(parent_field_hash?)?;
+                let remap = ctx.remaps.get(&type_info.name);
+                let type_label = remap
+                    .and_then(|r| r.fields.get(&field_info.name))
+                    .unwrap_or(&field_info.original_type);
+                Some(type_label.clone())
+            });
+
+
+        match struct_type_name.as_deref() {
+            Some(name) => {
+                // this returns
+                try_edit_as!(name, &mut self.data, ui, ctx, {
+                    "via.vec2" => Vec2,
+                    "via.vec3" => Vec4,
+                    "via.vec4" => Vec4,
+                    "via.rds.Mandrake" => Mandrake,
+                });
+                if let Some(type_info) = ctx.engine_context.rsz_map.get_type(name) {
+                    if let Err(e) = render_struct_by_schema(ui, ctx, type_info, &self.data) {
+                        ui.label(format!("rsz deser error: {e}"));
+                        self.data.ui(ui, ctx);
+                    }
+                } else {
+                    ui.label(format!("unknown struct: {name}"));
+                    self.data.ui(ui, ctx);
+                }
+            }
+            None => { self.data.ui(ui, ctx); }
+        }
+    }
+}
+
+pub fn deserialize_struct<'a>(type_info: &'a TypeInfo, data: &[u8], rsz_map: &'a RszMap) -> Result<Vec<(&'a FieldInfo, rsz::Value)>> {
+    let mut reader = Cursor::new(data);
+    let mut deserializer = RszDeserializer::from_rsz_info(&mut reader, rsz_map);
+    type_info.fields.iter()
+        .map(|(_hash, field)| {
+            let value = deserializer.deserialize_field(field, type_info)?;
+            Ok((field, value))
+        })
+        .collect()
+}
+
+pub fn render_struct_by_schema(ui: &mut Ui, ctx: &mut EditContext, type_info: &TypeInfo, data: &[u8]) -> Result<()> {
+    let mut s = deserialize_struct(type_info, data, ctx.engine_context.rsz_map)?;
+    for (field, mut value) in s {
+        ui.label(&field.name);
+        value.ui(ui, ctx);
+    }
+
+    // TODO: serialize
+    Ok(())
+}
+
+impl Editable for rsz::Value {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut EditContext) {
+        use rsz::Value::*;
+        match self {
+            U8 (v) => v.ui(ui, ctx),
+            U16(v) => v.ui(ui, ctx),
+            U32(v) => v.ui(ui, ctx),
+            U64(v) => v.ui(ui, ctx),
+            S8 (v) => v.ui(ui, ctx),
+            S16(v) => v.ui(ui, ctx),
+            S32(v) => v.ui(ui, ctx),
+            S64(v) => v.ui(ui, ctx),
+            String(v) => v.ui(ui, ctx),
+            Resource(v) => v.ui(ui, ctx),
+            _ => ()
+        }
+    }
+}
+
+impl Editable for Mandrake {
+    fn ui(&mut self, ui: &mut Ui, ctx: &mut EditContext) {
+        if let Some(mut real_val) = self.get() {
+            ui.horizontal(|ui| {
+                real_val.ui(ui, ctx);
+            });
+            self.set(real_val);
+        }
+        ui.horizontal(|ui| {
+            ui.label("  v");
+            ui.label(format!("{}", self.v));
+        });
+        ui.horizontal(|ui| {
+            ui.label("  m");
+            ui.label(format!("{}", self.m));
+        });
+    }
+}
+
+impl Editable for Vec2 {
+    fn ui(&mut self, ui: &mut Ui, ctx: &mut EditContext) {
+        ui.horizontal(|ui| {
+            ui.label("x");
+            self.0.ui(ui, ctx);
+            ui.label("y");
+            self.1.ui(ui, ctx);
+        });
+    }
+}
+
+impl Editable for Vec3 {
+    fn ui(&mut self, ui: &mut Ui, ctx: &mut EditContext) {
+        ui.horizontal(|ui| {
+            ui.label("x");
+            self.0.ui(ui, ctx);
+            ui.label("y");
+            self.1.ui(ui, ctx);
+            ui.label("z");
+            self.2.ui(ui, ctx);
+        });
+    }
+}
+
+impl Editable for Vec4 {
+    fn ui(&mut self, ui: &mut Ui, ctx: &mut EditContext) {
+        ui.horizontal(|ui| {
+            ui.label("x");
+            self.0.ui(ui, ctx);
+            ui.label("y");
+            self.1.ui(ui, ctx);
+            ui.label("z");
+            self.2.ui(ui, ctx);
+            ui.label("w");
+            self.3.ui(ui, ctx);
+        });
+    }
+}
+
+impl Editable for Color {
+    fn ui(&mut self, ui: &mut Ui, ctx: &mut EditContext) {
+        ui.horizontal(|ui| {
+            ui.label("r");
+            self.0.ui(ui, ctx);
+            ui.label("g");
+            self.1.ui(ui, ctx);
+            ui.label("b");
+            self.2.ui(ui, ctx);
+            ui.label("a");
+            self.3.ui(ui, ctx);
+        });
     }
 }

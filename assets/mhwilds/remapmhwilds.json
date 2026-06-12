@@ -31,7 +31,7 @@
     },
     "app.savedata.cShortcutItemParam": {
         "fields": {
-            "Value": "app.ItemDef.ID_Fixed"
+            "Value": "app.ItemDef.ID"
         },
         "format": "{Value}"
     },
@@ -162,6 +162,9 @@
             "explain": "msg(assets/mhwilds/Item.msg.23)[ @row._RawExplain ]"
         }
     },
+    "app.ItemDef.ID": {
+        "format": "{convert:app.ItemDef.ID_Fixed}"
+    },
     "app.EnemyDef.ID_Fixed": {
         "format": "Enemy:{data:name}:{enum:}",
         "queries": {
@@ -172,7 +175,7 @@
         }
     },
     "app.EnemyDef.ID": {
-        "format": "Converted {convert:app.EnemyDef.ID_Fixed}"
+        "format": "{convert:app.EnemyDef.ID_Fixed}"
     },
     "app.ArmorDef.SERIES_Fixed": {
         "format": "{data:name}:{enum:}",
