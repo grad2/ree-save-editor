@@ -1,11 +1,11 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, io::Write, ops::Range, path::{Path, PathBuf}};
+use std::{collections::HashMap, error::Error, io::Write, ops::Range, path::{Path, PathBuf}};
 
-use eframe::egui::{CollapsingHeader, ComboBox, DragValue, Ui};
-use ree_lib::{assets::bundle::Bundle, context::EngineContext, enums::EnumMap, language::Language, rsz::RszMap};
-use ree_save_core::{edit::{EditContext, Editable, EditorConfig}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game}};
+use eframe::egui::{ComboBox, DragValue, Ui};
+use ree_lib::{assets::bundle::Bundle, context::EngineContext, enums::EnumMap, rsz::RszMap};
+use ree_save_core::{edit::{EditContext, Editable}, game_context::GameData, save::{SaveFile, SaveOptions, game::Game}};
 use uuid::Uuid;
 
-use crate::{config::Config, dialog::{AsyncFileDialog, DialogType}, steam::{self, Steam}};
+use crate::{config::Config, dialog::{AsyncFileDialog, DialogType}, steam::{Steam}};
 
 pub struct Tab {
     pub tab: TabType,

@@ -1,8 +1,8 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{collections::HashMap, path::{PathBuf}};
 use ree_lib::{assets::bundle::Bundle, enums::{EnumMap, load_enum_map}, rsz::RszMap};
 use serde::Deserialize;
 
-use crate::{save::{game::Game, remap::Remap}};
+use crate::save::{game::Game, remap::{Remap, get_asset_paths}};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GamePaths {
@@ -53,11 +53,14 @@ impl TryFrom<&GamePaths> for GameData {
             HashMap::default()
         };
 
-        let bundle = if let Some(ref _path) = value.enums {
-            //let data = std::fs::read(path)?;
+        let bundle = if let Some(ref _path) = value.bundle {
             Bundle::default()
         } else {
-            Bundle::default()
+            // if the bundle doesnt exist, load the assets based on the remap
+            let paths = get_asset_paths(&remaps);
+            let mut bundle = Bundle::default();
+            bundle.load_from_paths(paths, &rsz);
+            bundle
         };
 
         Ok(Self {

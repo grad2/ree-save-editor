@@ -12,7 +12,6 @@ impl<'a> EditContext<'a> {
 
     pub fn eval_data(&mut self, data_name: &str, remap: &Remap, current_val: &Value) -> Option<String> {
         let source = remap.data.get(data_name)?;
-
         match source {
             DataSource::MsgLookup { msg_file, target_query, target_field } => {
                 let query_def = remap.queries.get(target_query)?;
@@ -39,9 +38,42 @@ impl<'a> EditContext<'a> {
         }
     }
 
+    // TODO: results from each of these lookups should get cached
+    // this should handle remapping itself i think
+    pub fn remap_format(&mut self, remap_key: &str, val: &FieldValue) -> Option<String> {
+        let remap = self.remaps.get(remap_key)?;
+        let mut res = String::new();
+        let rsz_val: Value = Value::from(val);
+        for node in &remap.format {
+            use super::remap::FormatNode::*;
+            match node {
+                Literal(l) => res.push_str(l),
+                Data(d) => {
+                    let data = self.try_remap(remap_key, d, &rsz_val)?;
+                    res.push_str(&data);
+                },
+                // TODO: enum could probably actually be formatted like {enum:app.ItemDef.ID_Fixed}
+                // that way i can freely do alot of shit, i can probably even have an {enum_val:...}
+                Enum => {
+                    let data = self.try_enum_str(remap_key, val)?;
+                    res.push_str(&data);
+                },
+                Field(f) => {
+                    log::debug!("Not implemented: Field({f})");
+                },
+                Convert(c) => {
+                    let enum_str = self.try_enum_str(remap_key, val)?;
+                    let converted_val = self.try_enum_field_val(remap_key, &enum_str)?;
+                    let converted_str = self.remap_format(c, &converted_val)?;
+                    res.push_str(&converted_str);
+                },
+            }
+        }
+        Some(res)
+    }
+
     fn resolve_query(&mut self, query_name: &str, remap: &Remap, current_val: &Value) -> Option<Value> {
         let cache_key = (query_name.to_string(), format!("{:?}", current_val));
-
         if let Some(cached_val) = self.query_cache.get(&cache_key) {
             return Some(cached_val.clone());
         }
@@ -94,6 +126,12 @@ impl<'a> EditContext<'a> {
             FieldValue::U64(v) => enum_def.get_name_i64(*v as i64).or_else(|| enum_def.get_name_u64(*v)).cloned(),
             _ => None,
         }
+    }
+
+
+    pub fn try_enum_field_val(&self, enum_type_name: &str, enum_str: &str) -> Option<FieldValue> {
+        let enum_def = self.engine_context.enums.get(enum_type_name)?;
+        Some(FieldValue::U64(enum_def.get_value_u64(enum_str)?))
     }
 }
 

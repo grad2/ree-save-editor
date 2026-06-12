@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Deserializer};
 use ree_lib::data::{DataSource, deserialize_data_sources};
@@ -19,13 +19,14 @@ pub struct Remap {
     pub data: HashMap<String, DataSource>, 
 }
 
+// TODO: add a raw, and a pipe as a backup?
 #[derive(Debug, Clone)]
 pub enum FormatNode {
-    Literal(String),        // "Enemy:"
-    Data(String),           // "{data:name}" -> "name"
-    Convert(String),        // "{convert:app.EnemyDef.ID_Fixed}" -> "app.EnemyDef.ID_Fixed"
-    Enum,                   // "{enum:}"
-    Field(String),          // "{_BasicData}" -> "_BasicData"
+    Literal(String),        // "Enemy:", just  literal
+    Data(String),           // "{data:name}" enters the data entry at "name"
+    Convert(String),        // "{convert:app.EnemyDef.ID_Fixed}" i.e "aap.EnemyDef.ID" -> "app.EnemyDef.ID_Fixed"
+    Enum,                   // "{enum:}", just puts in the enum value
+    Field(String),          // "{_BasicData}", value of a field, only valid on classes
 }
 
 use regex::Regex;
@@ -73,4 +74,27 @@ where
 {
     let format_str = String::deserialize(deserializer)?;
     Ok(parse_format_string(&format_str))
+}
+
+pub fn get_asset_paths(remaps: &HashMap<String, Remap>) -> HashSet<String> {
+    let mut res = HashSet::new();
+    for remap in remaps.values() {
+        for query in remap.queries.values() {
+            match query {
+                DataSource::MsgLookup { msg_file: file, .. }
+                | DataSource::RszQuery { rsz_file: file, .. } => {
+                    res.insert(file.to_string());
+                },
+            }
+        }
+        for query in remap.data.values() {
+            match query {
+                DataSource::MsgLookup { msg_file: file, .. }
+                | DataSource::RszQuery { rsz_file: file, .. } => {
+                    res.insert(file.to_string());
+                },
+            }
+        }
+    }
+    res
 }

@@ -82,7 +82,7 @@ impl FieldType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EnumValue {
     E1(i8),
     E2(i16),
@@ -109,7 +109,7 @@ impl EnumValue {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FieldValue {
     Array(Box<Array>),
     Unknown,
@@ -327,10 +327,6 @@ impl FieldValue {
 }
 
 impl FieldValue {
-    pub fn get_enum_str(&self) -> Option<String> {
-        None
-    }
-
     pub fn as_class(&self) -> Option<&Class> {
         match self {
             FieldValue::Class(b) => Some(b),
@@ -392,6 +388,30 @@ impl FieldValue {
             FieldValue::String(s) => Some(s),
             _ => None,
         }
+    }
+
+    pub fn as_any_u64(&self) -> Option<u64> {
+        let val = match self {
+            FieldValue::Enum(v) => match v {
+                EnumValue::E1(v) => *v as u64,
+                EnumValue::E2(v) => *v as u64,
+                EnumValue::E4(v) => *v as u64,
+                EnumValue::E8(v) => *v as u64,
+            },
+            FieldValue::S8(v) => *v as u64,
+            FieldValue::U8(v) => *v as u64,
+            FieldValue::C8(v) => *v as u64,
+            FieldValue::S16(v) => *v as u64,
+            FieldValue::U16(v) => *v as u64,
+            FieldValue::C16(v) => *v as u64,
+            FieldValue::S32(v) => *v as u64,
+            FieldValue::U32(v) => *v as u64,
+            FieldValue::F32(v) => *v as u64,
+            FieldValue::S64(v) => *v as u64,
+            FieldValue::U64(v) => *v as u64,
+            _ => return None,
+        };
+        Some(val)
     }
 }
 
@@ -565,7 +585,7 @@ pub enum ArrayType {
     Class = 1,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Array {
     pub member_type: FieldType,
     pub member_size: u32,
@@ -705,7 +725,7 @@ impl Array {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     pub hash: u32,
     pub field_type: FieldType,
@@ -752,12 +772,12 @@ impl Field {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Struct {
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub num_fields: u32,
     pub hash: u32,
@@ -864,46 +884,46 @@ impl Class {
 
 // TODO: macroize this stuff
 /*impl TryFrom<&Struct> for Mandrake {
-    type Error = Box<dyn Error>;
-    fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-        if value.data.len() > 16 {
-            return Err("Data Length > 16 for Mandrake".into());
-        }
-        let mut d = Cursor::new(&value.data);
-        let v = d.read_i64()?;
-        let m = d.read_i64()?;
-        Ok(Mandrake { v, m })
-    }
-}
+  type Error = Box<dyn Error>;
+  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
+  if value.data.len() > 16 {
+  return Err("Data Length > 16 for Mandrake".into());
+  }
+  let mut d = Cursor::new(&value.data);
+  let v = d.read_i64()?;
+  let m = d.read_i64()?;
+  Ok(Mandrake { v, m })
+  }
+  }
 
-impl TryFrom<&Struct> for Vec2 {
-    type Error = Box<dyn Error>;
-    fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-        let data: [u8; 16] = value.data.as_slice().try_into()?;
-        Ok(bytemuck::cast(data))
-    }
-}
+  impl TryFrom<&Struct> for Vec2 {
+  type Error = Box<dyn Error>;
+  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
+  let data: [u8; 16] = value.data.as_slice().try_into()?;
+  Ok(bytemuck::cast(data))
+  }
+  }
 
-impl TryFrom<&Struct> for Vec3 {
-    type Error = Box<dyn Error>;
-    fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-        let data: [u8; 16] = value.data.as_slice().try_into()?;
-        Ok(bytemuck::cast(data))
-    }
-}
+  impl TryFrom<&Struct> for Vec3 {
+  type Error = Box<dyn Error>;
+  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
+  let data: [u8; 16] = value.data.as_slice().try_into()?;
+  Ok(bytemuck::cast(data))
+  }
+  }
 
-impl TryFrom<&Struct> for Vec4 {
-    type Error = Box<dyn Error>;
-    fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-        let data: [u8; 16] = value.data.as_slice().try_into()?;
-        Ok(bytemuck::cast(data))
-    }
-}
+  impl TryFrom<&Struct> for Vec4 {
+  type Error = Box<dyn Error>;
+  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
+  let data: [u8; 16] = value.data.as_slice().try_into()?;
+  Ok(bytemuck::cast(data))
+  }
+  }
 
-impl TryFrom<&Struct> for Color {
-    type Error = Box<dyn Error>;
-    fn try_from(value: &Struct) -> Result<Self, Self::Error> {
-        let data: [u8; 4] = value.data.as_slice().try_into()?;
-        Ok(bytemuck::cast(data))
-    }
-}*/
+  impl TryFrom<&Struct> for Color {
+  type Error = Box<dyn Error>;
+  fn try_from(value: &Struct) -> Result<Self, Self::Error> {
+  let data: [u8; 4] = value.data.as_slice().try_into()?;
+  Ok(bytemuck::cast(data))
+  }
+  }*/

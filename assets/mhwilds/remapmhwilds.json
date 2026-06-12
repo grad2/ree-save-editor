@@ -19,8 +19,8 @@
     },
     "app.savedata.cItemParam": {
         "fields": {
-            "_ItemFoundFlag": "app.ItemDef.ID_Fixed",
-            "_ItemCheckedFlag": "app.ItemDef.ID_Fixed"
+            "_ItemFoundFlag": "ace.Bitset<app.ItemDef.ID_Fixed>",
+            "_ItemCheckedFlag": "ace.Bitset<app.ItemDef.ID_Fixed>"
         }
     },
     "app.savedata.cMissionParam": {

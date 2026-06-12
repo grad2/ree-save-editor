@@ -9,7 +9,7 @@ use ree_lib::language::Language;
 use ree_save_core::{game_context::{GameConfigs, GameData, load_game_configs}, save::game::Game};
 
 
-use crate::{config::{Config, load_config, load_config_checked}, tab::{SaveFileView, Tab}, viewer::Viewer};
+use crate::{config::{Config, load_config_checked}, tab::{SaveFileView, Tab}, viewer::Viewer};
 
 pub struct App {
     tree: DockState<Tab>,
@@ -130,7 +130,7 @@ impl eframe::App for App {
                     let game_data = match GameData::try_from(&game_config) {
                         Ok(game_data) => game_data,
                         Err(e) => {
-                            log::error!("Could not load game data {:?}", game_config);
+                            log::error!("{e}: Could not load game data {:?}", game_config);
                             return;
                         }
                     };

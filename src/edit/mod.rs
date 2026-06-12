@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use eframe::egui::{self, CollapsingHeader, Frame, ScrollArea, TextEdit, Ui};
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,89 @@ pub struct EditContext<'a> {
     pub config: &'a EditorConfig,
     pub path: &'a mut Vec<PathNode>,
     pub query_cache: &'a mut HashMap<(String, String), Value>,
+}
+
+impl<'a> EditContext<'a> {
+    pub fn draw_remapped_dropdown(
+        &mut self,
+        ui: &mut egui::Ui,
+        value: &mut FieldValue,
+        remap_key: &str,
+        id_salt: impl std::hash::Hash,
+    ) -> bool {
+        let mut changed = false;
+
+        let current_preview = self.remap_format(remap_key, value)
+            .unwrap_or_else(|| format!("{:?}", value));
+
+        let enum_def = match self.engine_context.enums.get(remap_key) {
+            Some(def) => def,
+            None => {
+                return false;
+            }
+        };
+
+        let cache_id = ui.make_persistent_id(("dropdown_cache", remap_key));
+
+        let start = Instant::now();
+
+        let cached_options: Arc<Vec<(FieldValue, String)>> = ui.data_mut(|d| {
+            let cached = d.get_temp::<Arc<Vec<(FieldValue, String)>>>(cache_id);
+            match cached {
+                Some(opts) => opts,
+                None => {
+                    let mut new_opts = Vec::with_capacity(enum_def.name_to_value.len());
+
+                    for (enum_str, enum_val) in enum_def.name_to_value.iter() {
+                        let enum_val_u64 = enum_val.as_u64();
+                        let field_val = match value {
+                            FieldValue::U8(_) => FieldValue::U8(enum_val_u64 as u8),
+                            FieldValue::U16(_) => FieldValue::U16(enum_val_u64 as u16),
+                            FieldValue::U32(_) => FieldValue::U32(enum_val_u64 as u32),
+                            FieldValue::U64(_) => FieldValue::U64(enum_val_u64),
+                            FieldValue::S8(_) => FieldValue::S8(enum_val_u64 as i8),
+                            FieldValue::S16(_) => FieldValue::S16(enum_val_u64 as i16),
+                            FieldValue::S32(_) => FieldValue::S32(enum_val_u64 as i32),
+                            FieldValue::S64(_) => FieldValue::S64(enum_val_u64 as i64),
+                            FieldValue::Enum(EnumValue::E1(_)) => FieldValue::Enum(EnumValue::E1(enum_val_u64 as i8)),
+                            FieldValue::Enum(EnumValue::E2(_)) => FieldValue::Enum(EnumValue::E2(enum_val_u64 as i16)),
+                            FieldValue::Enum(EnumValue::E4(_)) => FieldValue::Enum(EnumValue::E4(enum_val_u64 as i32)),
+                            FieldValue::Enum(EnumValue::E8(_)) => FieldValue::Enum(EnumValue::E8(enum_val_u64 as i64)),
+                            _ => {
+                                log::warn!("Attempting to create enum dropdown for un-coercable type");
+                                continue
+                            }
+                        };
+
+                        let option_text = self.remap_format(remap_key, &field_val)
+                            .unwrap_or_else(|| enum_str.clone());
+
+                        new_opts.push((field_val, option_text));
+                    }
+
+                    let arc_opts = Arc::new(new_opts);
+                    d.insert_temp(cache_id, arc_opts.clone());
+                    arc_opts
+                }
+            }
+
+        });
+        egui::ComboBox::from_id_salt(id_salt)
+            .selected_text(current_preview)
+            .show_ui(ui, |ui| {
+                for (option_val, option_text) in cached_options.iter() {
+                    let is_selected = value.as_any_u64() == option_val.as_any_u64();
+
+                    if ui.selectable_label(is_selected, option_text).clicked() {
+                        *value = option_val.clone();
+                        changed = true;
+                    }
+                }
+            });
+        //log::info!("Enum drop time: {}", start.elapsed().as_millis());
+
+        changed
+    }
 }
 
 pub trait Editable {
@@ -163,8 +246,8 @@ impl Editable for Array {
             }
 
             let (visible_sum, visible_count): (_, u32) = row_heights.iter().enumerate()
-                //.filter(|(i, _)| ctx.search_range.contains(i))
-                .fold((0.0, 0), |(acc_h, acc_c), (_, h)| (acc_h + h, acc_c + 1));
+                                               //.filter(|(i, _)| ctx.search_range.contains(i))
+                                               .fold((0.0, 0), |(acc_h, acc_c), (_, h)| (acc_h + h, acc_c + 1));
 
             let total_content_height = visible_sum + (visible_count.saturating_sub(1) as f32 * spacing);
 
@@ -200,8 +283,8 @@ impl Editable for Array {
                                 }
                                 if current_y > clip_rect.max.y + 200.0 {
                                     let (rem_h, rem_c): (_, u32) = row_heights[i..].iter().enumerate()
-                                        //.filter(|(offset, _)| ctx.search_range.contains(&(i + offset)))
-                                        .fold((0.0, 0), |(acc_h, acc_c), (_, h)| (acc_h + h, acc_c + 1));
+                                                         //.filter(|(offset, _)| ctx.search_range.contains(&(i + offset)))
+                                                         .fold((0.0, 0), |(acc_h, acc_c), (_, h)| (acc_h + h, acc_c + 1));
 
                                     let rem_spacing = rem_c.saturating_sub(1) as f32 * spacing;
                                     ui.add_space(rem_h + rem_spacing);
@@ -222,7 +305,7 @@ impl Editable for Array {
                             log::debug!("rendered {rendered_count} elements in the array");
                         });
                 });
-                ui.data_mut(|d| d.insert_temp(state_id, row_heights));
+            ui.data_mut(|d| d.insert_temp(state_id, row_heights));
         });
     }
 }
@@ -257,16 +340,8 @@ impl Editable for Field {
         // parent class -> field -> remapped field type
         if let Some(remap) = ctx.remaps.get(&class_name)
             && let Some(remapped_type) = remap.fields.get(&field_name) {
-                if &type_label != "ace.Bitset" {
-                    log::info!("Remapped {field_name}: {type_label} -> {remapped_type}");
-                }
                 type_label = remapped_type.clone();
-        }
-
-        let rsz_val: Value = Value::from(&self.value);
-        let remapped_text = ctx.try_remap(&class_name, &field_name, &rsz_val);
-
-        let enum_string = ctx.try_enum_str(&type_label, &self.value);
+            }
 
         ui.push_id(self.hash, |ui| {
             match &mut self.value {
@@ -279,16 +354,15 @@ impl Editable for Field {
                 }
                 _ => {
                     ui.horizontal(|ui| {
-                        if let Some(human_name) = remapped_text {
-                            ui.label(format!("{}: {}", field_name, human_name));
-                        } else {
-                            ui.label(format!("{}:", field_name));
-                        };
-                        self.value.ui(ui, ctx);
-
-                        if let Some(enum_string) = enum_string {
-                            ui.label(format!("{}", enum_string));
+                        ui.label(format!("{}:", field_name));
+                        if ctx.remaps.contains_key(&type_label) {
+                            ctx.draw_remapped_dropdown(ui, &mut self.value, &type_label, self.hash);
+                            //if let Some(formatted) = ctx.remap_format(&type_label, &self.value) {
+                            //    ui.label(formatted);
+                            //}
                         }
+
+                        self.value.ui(ui, ctx);
 
                     });
                 }
