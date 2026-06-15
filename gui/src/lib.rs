@@ -8,6 +8,7 @@ pub mod viewer;
 pub mod code_editor;
 
 use eframe::egui::{self};
+use ree_lib::save::game::Game;
 
 // We need a common config struct that works for both CLI (Clap) and Web
 #[derive(Debug, Clone)]
@@ -15,6 +16,7 @@ pub struct Config {
     pub file_name: Option<String>,
     pub out_dir: String,
     pub steamid: Option<String>,
+    pub game: Option<Game>,
     pub rsz_path: Option<String>,
     pub enums_path: Option<String>,
     pub msgs_path: Option<String>,
@@ -30,6 +32,7 @@ impl Default for Config {
             file_name: None,
             out_dir: "outputs".to_string(),
             steamid: None,
+            game: None,
             rsz_path: None,
             enums_path: None,
             msgs_path: None,
@@ -73,10 +76,7 @@ pub fn save_file_dialog(default_name: &str, data: Vec<u8>) {
 
         options.set_type("application/octet-stream");
 
-        let blob = web_sys::Blob::new_with_blob_sequence_and_options(
-            &array,
-            &options, 
-        ).unwrap();
+        let blob = web_sys::Blob::new_with_blob_sequence_and_options(&array, &options).unwrap();
 
         let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
 

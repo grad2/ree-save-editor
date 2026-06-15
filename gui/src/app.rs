@@ -6,12 +6,17 @@ use eframe::{
     egui::{Align, CentralPanel, Layout, MenuBar, TopBottomPanel},
 };
 use egui_dock::{DockArea, DockState};
-use ree_lib::{sdk::type_map::ContentLanguage};
+use ree_lib::sdk::type_map::ContentLanguage;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::code_editor::CodeEditor;
 
-use crate::{Config, file::{FilePicker, FileView}, tab::Tab, viewer::Viewer};
+use crate::{
+    Config,
+    file::{FilePicker, FileView},
+    tab::Tab,
+    viewer::Viewer,
+};
 
 pub struct TameApp {
     viewer: Viewer,
@@ -21,7 +26,11 @@ pub struct TameApp {
 
 impl TameApp {
     pub fn new(config: Config) -> Self {
-        let file_view = FileView::new(&config, 0, ContentLanguage::English);
+        let file_view = if let Some(file_name) = &config.file_name {
+            FileView::from_path(&config, file_name.clone(), 0, ContentLanguage::English)
+        } else {
+            FileView::new(&config, 0, ContentLanguage::English)
+        };
         let tab = Tab::from(file_view);
         let mut viewer = Viewer::new(config);
         let dock_state = DockState::new(vec![tab]);
@@ -50,11 +59,12 @@ impl eframe::App for TameApp {
         if let Some(file_pick_res) = self.file_opener.take() {
             use crate::file::FilePickResult;
 
-            if let FilePickResult::Wasm {name, data} = file_pick_res {
+            if let FilePickResult::Wasm { name, data } = file_pick_res {
                 log::info!("Loading Save File {name}");
                 let file_view = FileView::from_data(
                     &self.viewer.config,
-                    name, data,
+                    name,
+                    data,
                     self.viewer.num_tabs,
                     self.viewer.default_language,
                 );
@@ -110,7 +120,7 @@ impl eframe::App for TameApp {
                     #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("New Script").clicked() {
                         self.add_tab(Tab::from(CodeEditor::new_default(self.viewer.num_tabs)));
-                    } 
+                    }
                     #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Open Script").clicked() {
                         let cur = std::env::current_dir().unwrap_or(PathBuf::from("~"));
@@ -124,7 +134,10 @@ impl eframe::App for TameApp {
                         if let Some(file_path) = file_path {
                             let file_path = file_path.to_str();
                             if let Some(file_path) = file_path {
-                                self.add_tab(Tab::from(CodeEditor::new(&file_path, self.viewer.num_tabs)));
+                                self.add_tab(Tab::from(CodeEditor::new(
+                                    &file_path,
+                                    self.viewer.num_tabs,
+                                )));
                             }
                         }
                     }
@@ -136,7 +149,10 @@ impl eframe::App for TameApp {
                                     let path = path.path().display().to_string();
                                     if path.ends_with("lua") {
                                         if ui.button(&path).clicked() {
-                                            self.add_tab(Tab::from(CodeEditor::new(&path, self.viewer.num_tabs)));
+                                            self.add_tab(Tab::from(CodeEditor::new(
+                                                &path,
+                                                self.viewer.num_tabs,
+                                            )));
                                             self.viewer.run_script(&path);
                                         }
                                     }
@@ -147,9 +163,15 @@ impl eframe::App for TameApp {
                 });
                 ui.menu_button("Options", |ui| {
                     ui.menu_button(
-                        format!("Language ({})", LANGUAGE_OPTIONS[self.viewer.default_language as usize].0),
+                        format!(
+                            "Language ({})",
+                            LANGUAGE_OPTIONS[self.viewer.default_language as usize].0
+                        ),
                         |ui| {
-                            for option in LANGUAGE_OPTIONS.iter().filter(|x| INGAME_LANGUAGES.contains(&x.1)) {
+                            for option in LANGUAGE_OPTIONS
+                                .iter()
+                                .filter(|x| INGAME_LANGUAGES.contains(&x.1))
+                            {
                                 ui.selectable_value(
                                     &mut self.viewer.default_language,
                                     option.1,
@@ -182,7 +204,7 @@ impl eframe::App for TameApp {
                     .secondary_button_context_menu(true)
                     .secondary_button_on_modifier(true)
                     .show_inside(ui, &mut self.viewer);
-                });
+            });
     }
 }
 
@@ -242,4 +264,4 @@ const LANGUAGE_OPTIONS: [(&'static str, ContentLanguage); 34] = [
         ContentLanguage::LatinAmericanSpanish,
     ),
     ("Unknown", ContentLanguage::Unknown),
-    ];
+];
