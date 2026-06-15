@@ -4,11 +4,13 @@ mod native {
     use eframe::egui;
     use ree_lib::{
         game_context::{AssetPaths, GameCtx},
-        save::game::Game,
+        save::{SaveFile, SaveOptions, game::Game},
     };
     use ree_save_editor::{Config, app::TameApp, configure_fonts};
     use std::{
         collections::HashMap,
+        fs,
+        path::PathBuf,
         sync::{Arc, RwLock},
     };
 
@@ -19,6 +21,14 @@ mod native {
                 Game::valid_names()
             )
         })
+    }
+
+    fn parse_steamid(value: &str) -> Result<u64, String> {
+        if let Some(hex) = value.strip_prefix("0x") {
+            u64::from_str_radix(hex, 16).map_err(|err| err.to_string())
+        } else {
+            u64::from_str_radix(value, 10).map_err(|err| err.to_string())
+        }
     }
 
     #[derive(Parser, Debug)]
@@ -43,6 +53,18 @@ mod native {
             help = "Run a Lua script and exit without launching the UI"
         )]
         run_script: Option<String>,
+
+        #[arg(
+            long,
+            help = "Load --file-name, execute the Save action, and exit without launching the UI"
+        )]
+        save: bool,
+
+        #[arg(
+            long,
+            help = "Citrus/Lime curve index to use for headless save operations"
+        )]
+        curve_index: Option<usize>,
 
         #[arg(long)]
         rsz_path: Option<String>,
@@ -103,6 +125,73 @@ mod native {
         Ok(())
     }
 
+    fn save_headless(config: &Config, curve_index: Option<usize>) -> eframe::Result<()> {
+        let input_path = config.file_name.as_ref().ok_or_else(|| {
+            eframe::Error::AppCreation(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "--save requires --file-name",
+            )))
+        })?;
+        let game = config.game.unwrap_or(Game::MHWILDS);
+        let expanded =
+            shellexpand::full(input_path).unwrap_or(std::borrow::Cow::Borrowed(input_path));
+        let input_path = PathBuf::from(expanded.as_ref());
+        let data = fs::read(&input_path).map_err(|err| {
+            eframe::Error::AppCreation(Box::new(std::io::Error::new(
+                err.kind(),
+                format!("failed to read {}: {err}", input_path.display()),
+            )))
+        })?;
+
+        let mut options = SaveOptions::new(game);
+        if let Some(steamid) = &config.steamid {
+            let steamid = parse_steamid(steamid).map_err(|err| {
+                eframe::Error::AppCreation(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("invalid --steamid: {err}"),
+                )))
+            })?;
+            options = options.id(steamid);
+        }
+        if let Some(curve_index) = curve_index {
+            options = options.curve_index(curve_index);
+        }
+
+        let save = SaveFile::read_save(data, &mut options).map_err(|err| {
+            eframe::Error::AppCreation(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("failed to load save: {err}"),
+            )))
+        })?;
+        let data = save.write_save(&options).map_err(|err| {
+            eframe::Error::AppCreation(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("failed to write save: {err}"),
+            )))
+        })?;
+
+        let mut output_path = PathBuf::from(&config.out_dir);
+        fs::create_dir_all(&output_path).map_err(|err| {
+            eframe::Error::AppCreation(Box::new(std::io::Error::new(
+                err.kind(),
+                format!("failed to create {}: {err}", output_path.display()),
+            )))
+        })?;
+        let file_name = input_path
+            .file_name()
+            .map(|file_name| file_name.to_os_string())
+            .unwrap_or_else(|| "data.bin".into());
+        output_path.push(file_name);
+        fs::write(&output_path, data).map_err(|err| {
+            eframe::Error::AppCreation(Box::new(std::io::Error::new(
+                err.kind(),
+                format!("failed to save {}: {err}", output_path.display()),
+            )))
+        })?;
+        println!("Saved to {}", output_path.display());
+        Ok(())
+    }
+
     pub fn main() -> eframe::Result<()> {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
         let args = GuiArgs::parse();
@@ -126,6 +215,9 @@ mod native {
 
         if let Some(script_path) = args.run_script {
             return run_script_headless(&config, &script_path);
+        }
+        if args.save {
+            return save_headless(&config, args.curve_index);
         }
 
         eframe::run_native(
