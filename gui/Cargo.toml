@@ -18,40 +18,9 @@ mhrise = []
 pragmata = []
 
 [dependencies]
-util = { path = "../util" }
-
-eframe = "0.33.0"
-egui_dock = "0.18.0"
-egui_extras = { version = "0.33.3", features = ["syntect"] }
-
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4.27"
+ree-lib = { path = "../", default-features = false, features = ["save"] }
 shellexpand = "3.1.1"
-rfd = "0.15.4"
-web-time = "1.1.0"
-keyvalues-parser = "0.2.2"
-keyvalues-serde = "0.2.3"
-serde_json = "1.0.147"
-syntect = { version = "5.3.0", default-features = false, features = ["regex-fancy", "html"] }
-hex = "0.4.3"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-js-sys = "0.3.83"
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = [
-    "Document",
-    "Window",
-    "Element",
-    "HtmlCanvasElement",
-	"Storage"
-] }
-reqwest = { version = "0.11", features = ["json"] }
-console_error_panic_hook = "0.1"
-ree-lib = { path = "../", default-features = false }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-mlua = {version = "0.11.5", features = ["lua54", "vendored", "async", "send"] }
 clap = { version = "4.5.20", features = ["derive"] }
 env_logger = "0.11.8"
-ree-lib = { path = "../", features = ["scripting"] }
