@@ -5,13 +5,13 @@ use crate::save::crypto;
 macro_rules! define_games {
     (
         $(
-            $variant:ident ( 
-                $name:expr, 
-                $appid:expr 
-                $(, seeds: $seeds:expr)? 
+            $variant:ident (
+                $name:expr,
+                $appid:expr
+                $(, seeds: $seeds:expr)?
                 $(, calc: $steam_calc:expr)?
-                $(, blowfish: $blowfish:expr )? 
-                $(, lime: $lime:expr )? 
+                $(, blowfish: $blowfish:expr )?
+                $(, lime: $lime:expr )?
             )
         ),* $(,)?
     ) => {
@@ -27,13 +27,32 @@ macro_rules! define_games {
 
         impl Game {
             pub fn from_string(id: &str) -> Option<Game> {
-                $( if id == stringify!($variant) { return Some(Game::$variant); } )*
+                let normalized = id
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric())
+                    .flat_map(|c| c.to_uppercase())
+                    .collect::<String>();
+                $( if normalized == stringify!($variant) || normalized == $name
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric())
+                    .flat_map(|c| c.to_uppercase())
+                    .collect::<String>() {
+                    return Some(Game::$variant);
+                } )*
                 None
+            }
+
+            pub fn valid_names() -> String {
+                GAME_OPTIONS
+                    .iter()
+                    .map(|(name, game)| format!("{game:?} ({name})"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             }
 
             pub fn get_mandarin_seeds(&self) -> Option<(u64, u64)> {
                 match self {
-                    $( 
+                    $(
                         #[allow(unused_assignments, unused_mut)]
                         Game::$variant => {
                             let mut seeds = None;
@@ -46,7 +65,7 @@ macro_rules! define_games {
 
             pub fn get_blowfish_key(&self) -> Option<&'static [u8]> {
                 match self {
-                    $( 
+                    $(
                         #[allow(unused_assignments, unused_mut)]
                         Game::$variant => {
                             let mut key = None;
@@ -59,7 +78,7 @@ macro_rules! define_games {
 
             pub fn get_key_from_steamid(&self, steamid: u64) -> u64 {
                 match self {
-                    $( 
+                    $(
                         #[allow(unused_assignments, unused_mut)]
                         Game::$variant => {
                             let mut key = 0;
@@ -78,7 +97,7 @@ macro_rules! define_games {
 
             pub fn get_is_lime(&self) -> bool {
                 match self {
-                    $( 
+                    $(
                         #[allow(unused_assignments, unused_mut)]
                         Game::$variant => {
                             let mut is_lime = false;
